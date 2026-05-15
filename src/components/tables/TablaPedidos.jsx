@@ -104,17 +104,24 @@ export const TablaPedidos = ({ pedidos, paqueterias, onRefresh, onViewDetails, o
       cell: ({ row }) => format(new Date(row.original.fecha_pedido), 'dd/MM/yyyy'),
     },
     {
-      accessorKey: 'id_compra',
-      header: 'ID Compra',
-    },
-    {
-      accessorKey: 'plataforma',
-      header: 'Plataforma',
-      cell: ({ row }) => <Badge variant="outline">{row.original.plataforma}</Badge>,
+      accessorKey: 'tipo_compra',
+      header: 'Tipo',
+      cell: ({ row }) => (
+        <Badge variant={row.original.tipo_compra === 'Exclusivo' ? 'default' : 'secondary'}>
+          {row.original.tipo_compra}
+        </Badge>
+      )
     },
     {
       accessorKey: 'nombre_comprador',
       header: 'Comprador',
+      cell: ({ row }) => (
+        <div className="flex flex-col">
+          <span className="font-medium">{row.original.nombre_comprador}</span>
+          <span className="text-xs text-gray-500">{row.original.correo_comprador}</span>
+          <span className="text-xs text-gray-500">{row.original.telefono || 'Sin teléfono'}</span>
+        </div>
+      )
     },
     {
       accessorKey: 'direccion',
@@ -138,16 +145,15 @@ export const TablaPedidos = ({ pedidos, paqueterias, onRefresh, onViewDetails, o
       header: 'Productos',
       cell: ({ row }) => {
         const prods = row.original.productos || []
+        const texto = prods.map(p => `${p.cantidad}x ${p.nombre} ${p.talla ? `(${p.talla})` : ''}`.trim()).join(', ')
         return (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
-                <Badge variant="secondary">{prods.length} prod(s)</Badge>
+              <TooltipTrigger asChild>
+                <div className="max-w-[200px] truncate text-xs cursor-help">{texto || '-'}</div>
               </TooltipTrigger>
               <TooltipContent>
-                {prods.map((p, i) => (
-                  <div key={i}>{p.cantidad}x {p.nombre} {p.talla ? `(${p.talla})` : ''}</div>
-                ))}
+                <p className="max-w-xs break-words">{texto}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -158,7 +164,7 @@ export const TablaPedidos = ({ pedidos, paqueterias, onRefresh, onViewDetails, o
       accessorKey: 'paqueteria_id',
       header: 'Paquetería',
       cell: ({ row }) => {
-        const isEditable = rol === 'admin'
+        const isEditable = rol === 'admin' || (rol === 'paqueteria' && row.original.status === 'pendiente')
         const currentId = editedRows[row.original.id]?.paqueteria_id || row.original.paqueteria_id
         
         if (isEditable) {
@@ -189,7 +195,7 @@ export const TablaPedidos = ({ pedidos, paqueterias, onRefresh, onViewDetails, o
       accessorKey: 'guia',
       header: 'Guía',
       cell: ({ row }) => {
-        const isEditable = rol === 'paqueteria' && row.original.status === 'pendiente'
+        const isEditable = rol === 'admin' || (rol === 'paqueteria' && row.original.status === 'pendiente')
         const value = editedRows[row.original.id]?.guia !== undefined ? editedRows[row.original.id].guia : (row.original.guia || '')
         
         if (isEditable) {
@@ -202,7 +208,7 @@ export const TablaPedidos = ({ pedidos, paqueterias, onRefresh, onViewDetails, o
       accessorKey: 'link_seguimiento',
       header: 'Link',
       cell: ({ row }) => {
-        const isEditable = rol === 'paqueteria' && row.original.status === 'pendiente'
+        const isEditable = rol === 'admin' || (rol === 'paqueteria' && row.original.status === 'pendiente')
         const value = editedRows[row.original.id]?.link_seguimiento !== undefined ? editedRows[row.original.id].link_seguimiento : (row.original.link_seguimiento || '')
         
         if (isEditable) {
@@ -216,16 +222,40 @@ export const TablaPedidos = ({ pedidos, paqueterias, onRefresh, onViewDetails, o
       header: 'Status',
       cell: ({ row }) => {
         const status = row.original.status
+        const isEditable = rol === 'admin' || rol === 'paqueteria'
+        
+        if (isEditable) {
+          return (
+            <Select 
+              value={status} 
+              onValueChange={(val) => {
+                supabase.from('pedidos').update({ status: val }).eq('id', row.original.id).then(() => onRefresh())
+              }}
+            >
+              <SelectTrigger className={`w-[130px] h-8 text-xs border-0 ${statusColors[status] || 'bg-gray-100'}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pendiente">Pendiente</SelectItem>
+                <SelectItem value="en_transito">En Tránsito</SelectItem>
+                <SelectItem value="entregado">Entregado</SelectItem>
+                <SelectItem value="con_retraso">Con Retraso</SelectItem>
+                <SelectItem value="problema">Problema</SelectItem>
+              </SelectContent>
+            </Select>
+          )
+        }
+        
         return <Badge className={statusColors[status] || 'bg-gray-100 text-gray-800'}>{status.replace('_', ' ').toUpperCase()}</Badge>
       }
     },
     {
       id: 'acciones',
       cell: ({ row }) => {
-        const isPaqueteriaPendiente = rol === 'paqueteria' && row.original.status === 'pendiente'
+        const isEditableRole = rol === 'admin' || (rol === 'paqueteria' && row.original.status === 'pendiente')
         const hasEdits = editedRows[row.original.id] && (editedRows[row.original.id].guia || editedRows[row.original.id].link_seguimiento)
 
-        if (isPaqueteriaPendiente && hasEdits) {
+        if (isEditableRole && hasEdits) {
           return (
             <Button size="sm" className="bg-[#009B5B] hover:bg-[#00804b] text-white text-xs h-8" onClick={() => handleSaveAndNotify(row.original)}>
               GUARDAR Y NOTIFICAR

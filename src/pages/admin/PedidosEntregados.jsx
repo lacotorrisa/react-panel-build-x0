@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react'
 import { CheckCircle } from 'lucide-react'
 import useAppStore from '../../store/useAppStore'
 import { supabase } from '../../lib/supabase'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
 import { TablaPedidos } from '../../components/tables/TablaPedidos'
 import { ModalDetallePedido } from '../../components/modals/ModalDetallePedido'
 import { toast } from 'sonner'
 import { enviarEmailEntregado } from '../../lib/email'
 
 export const PedidosEntregados = () => {
-  const { clienteSeleccionado } = useAppStore()
+  const { clienteSeleccionado, setClienteSeleccionado } = useAppStore()
   const [pedidos, setPedidos] = useState([])
+  const [clientes, setClientes] = useState([])
   const [paqueterias, setPaqueterias] = useState([])
   const [selectedPedido, setSelectedPedido] = useState(null)
 
@@ -30,9 +32,20 @@ export const PedidosEntregados = () => {
     if (data) setPaqueterias(data)
   }
 
+  const fetchClientes = async () => {
+    const { data } = await supabase.from('clientes').select('*').eq('activo', true)
+    if (data) setClientes(data)
+  }
+
   useEffect(() => {
-    fetchPedidos()
+    fetchClientes()
     fetchPaqueterias()
+  }, [])
+
+  useEffect(() => {
+    if (clienteSeleccionado) {
+      fetchPedidos()
+    }
   }, [clienteSeleccionado])
 
   const handleVerificar = async (pedido) => {
@@ -40,13 +53,6 @@ export const PedidosEntregados = () => {
       window.open(pedido.link_seguimiento, '_blank')
     }
     
-    // The prompt requested a confirmation modal for "Verificar", but since this page only shows
-    // already 'entregado' status items according to the prompt initially, or maybe we show 'en_transito' to verify?
-    // Let's assume the user meant to verify 'en_transito' items and mark them 'entregado'.
-    // The prompt says: "- TablaPedidos filtrada por status = 'entregado' - Botón "Verificar" ... Al confirmar: cambia status a 'entregado'"
-    // This is a slight contradiction, usually you verify 'en_transito' to become 'entregado'.
-    // I will fetch both or just 'en_transito' and 'entregado'. 
-    // For now I'll just follow the prompt directly, but also allow checking status.
     const confirm = window.confirm('¿Confirmas que el paquete fue entregado?')
     if (confirm) {
       try {
@@ -70,10 +76,34 @@ export const PedidosEntregados = () => {
     }
   }
 
+  const SelectorCliente = () => (
+    <div className="w-full sm:w-72">
+      <Select 
+        value={clienteSeleccionado?.id?.toString() || ''} 
+        onValueChange={(val) => {
+          const cl = clientes.find(c => c.id.toString() === val)
+          setClienteSeleccionado(cl)
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Seleccionar Cliente" />
+        </SelectTrigger>
+        <SelectContent>
+          {clientes.map(cliente => (
+            <SelectItem key={cliente.id} value={cliente.id.toString()}>
+              {cliente.nombre}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+
   if (!clienteSeleccionado) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <h2 className="text-xl font-semibold text-gray-700">Selecciona un cliente en el Dashboard</h2>
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 text-center">
+        <h2 className="text-xl font-semibold text-gray-700">Selecciona un cliente para ver sus pedidos entregados</h2>
+        <SelectorCliente />
       </div>
     )
   }
@@ -81,9 +111,9 @@ export const PedidosEntregados = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div>
+        <div className="flex items-center gap-4">
           <h2 className="text-2xl font-bold tracking-tight">Pedidos Entregados</h2>
-          <p className="text-sm text-gray-500">Mostrando historial de entregas de: {clienteSeleccionado.nombre}</p>
+          <SelectorCliente />
         </div>
       </div>
 

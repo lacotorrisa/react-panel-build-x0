@@ -5,8 +5,14 @@ import { useAuth } from '../../lib/auth'
 export const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, rol, loading } = useAuth()
   const location = useLocation()
+  const [showSpinner, setShowSpinner] = React.useState(true)
 
-  if (loading) {
+  React.useEffect(() => {
+    const timer = setTimeout(() => setShowSpinner(false), 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (loading && showSpinner) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
         <div className="w-8 h-8 border-4 border-[#FF6600] border-t-transparent rounded-full animate-spin"></div>

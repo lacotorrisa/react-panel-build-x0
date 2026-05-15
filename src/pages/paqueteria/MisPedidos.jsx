@@ -13,14 +13,13 @@ export const MisPedidos = () => {
   const [retrasos, setRetrasos] = useState(0)
 
   const fetchPedidos = async () => {
-    if (!perfil?.paqueteria_id) return
+    // Solin Logistics maneja todas las paqueterías
+    let query = supabase.from('pedidos').select('*').order('created_at', { ascending: false })
     
-    // Asignados a esta paquetería
-    const { data } = await supabase
-      .from('pedidos')
-      .select('*')
-      .eq('paqueteria_id', perfil.paqueteria_id)
-      .order('created_at', { ascending: false })
+    // Si tuviera un ID específico, filtraríamos, pero Solin maneja todo:
+    // if (perfil.paqueteria_id) query = query.eq('paqueteria_id', perfil.paqueteria_id)
+    
+    const { data } = await query
     
     if (data) {
       setPedidos(data)

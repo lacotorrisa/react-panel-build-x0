@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { UploadCloud, File, AlertCircle, X, Check } from 'lucide-react'
+import { UploadCloud, File, AlertCircle, X, Check, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '../../lib/supabase'
 
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table'
 import { Badge } from '../ui/badge'
 
-const requiredColumns = ['id_compra', 'fecha_pedido', 'nombre_comprador', 'correo_comprador', 'telefono', 'direccion', 'productos']
+const requiredColumns = ['tipo_compra', 'fecha_pedido', 'nombre_comprador', 'correo_comprador', 'telefono', 'direccion', 'productos']
 
 export const ModalImportarCSV = ({ open, onOpenChange, cliente, onSuccess }) => {
   const [file, setFile] = useState(null)
@@ -28,6 +28,17 @@ export const ModalImportarCSV = ({ open, onOpenChange, cliente, onSuccess }) => 
     } else {
       toast.error('Por favor, selecciona un archivo CSV válido.')
     }
+  }
+
+  const downloadTemplate = () => {
+    const csvContent = "data:text/csv;charset=utf-8," + requiredColumns.join(',') + "\nGeneral,2023-10-15,Juan Perez,juan@email.com,555555555,CDMX Centro,2x Playera M"
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    link.setAttribute("download", "plantilla_pedidos.csv")
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   const parseCSV = (file) => {
@@ -106,9 +117,7 @@ export const ModalImportarCSV = ({ open, onOpenChange, cliente, onSuccess }) => 
       return toast.error(`Faltan mapear columnas: ${missingMaps.join(', ')}`)
     }
 
-    if (!cliente?.plataformas?.length) {
-      return toast.error('El cliente debe tener al menos una plataforma configurada')
-    }
+
 
     setLoading(true)
     setErrors([])
@@ -120,18 +129,17 @@ export const ModalImportarCSV = ({ open, onOpenChange, cliente, onSuccess }) => 
       try {
         const pedidoData = {
           cliente_id: cliente.id,
-          id_compra: row[mapping.id_compra],
+          tipo_compra: row[mapping.tipo_compra] || 'General',
           fecha_pedido: new Date(row[mapping.fecha_pedido]).toISOString().split('T')[0],
           nombre_comprador: row[mapping.nombre_comprador],
           correo_comprador: row[mapping.correo_comprador],
           telefono: row[mapping.telefono] || '',
           direccion: row[mapping.direccion],
           productos: parseProductos(row[mapping.productos]),
-          plataforma: cliente.plataformas[0], // default to first platform
           status: 'pendiente'
         }
 
-        if (!pedidoData.id_compra || !pedidoData.nombre_comprador) {
+        if (!pedidoData.nombre_comprador) {
           throw new Error('Faltan datos obligatorios')
         }
 
@@ -169,20 +177,29 @@ export const ModalImportarCSV = ({ open, onOpenChange, cliente, onSuccess }) => 
         </DialogHeader>
 
         {!file ? (
-          <div 
-            className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 cursor-pointer transition-colors"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept=".csv"
-              onChange={handleFileChange}
-            />
-            <UploadCloud className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <p className="text-lg font-medium text-gray-700">Haz clic para subir un archivo CSV</p>
-            <p className="text-sm text-gray-500 mt-2">Sólo archivos .csv delimitados por comas</p>
+          <div className="space-y-4">
+            <div 
+              className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 cursor-pointer transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".csv"
+                onChange={handleFileChange}
+              />
+              <UploadCloud className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <p className="text-lg font-medium text-gray-700">Haz clic para subir un archivo CSV</p>
+              <p className="text-sm text-gray-500 mt-2">Sólo archivos .csv delimitados por comas</p>
+            </div>
+            
+            <div className="flex justify-center">
+              <Button type="button" variant="outline" onClick={downloadTemplate} className="text-[#FF6600] border-[#FF6600] hover:bg-[#FFF0E6]">
+                <Download className="mr-2 h-4 w-4" />
+                Descargar Plantilla CSV
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">

@@ -3,14 +3,16 @@ import { Plus, Upload } from 'lucide-react'
 import useAppStore from '../../store/useAppStore'
 import { supabase } from '../../lib/supabase'
 import { Button } from '../../components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
 import { TablaPedidos } from '../../components/tables/TablaPedidos'
 import { ModalNuevoPedido } from '../../components/modals/ModalNuevoPedido'
 import { ModalImportarCSV } from '../../components/modals/ModalImportarCSV'
 import { ModalDetallePedido } from '../../components/modals/ModalDetallePedido'
 
 export const CargarPedidos = () => {
-  const { clienteSeleccionado } = useAppStore()
+  const { clienteSeleccionado, setClienteSeleccionado } = useAppStore()
   const [pedidos, setPedidos] = useState([])
+  const [clientes, setClientes] = useState([])
   const [paqueterias, setPaqueterias] = useState([])
   const [modalNuevoOpen, setModalNuevoOpen] = useState(false)
   const [modalCsvOpen, setModalCsvOpen] = useState(false)
@@ -32,15 +34,50 @@ export const CargarPedidos = () => {
     if (data) setPaqueterias(data)
   }
 
+  const fetchClientes = async () => {
+    const { data } = await supabase.from('clientes').select('*').eq('activo', true)
+    if (data) setClientes(data)
+  }
+
   useEffect(() => {
-    fetchPedidos()
+    fetchClientes()
     fetchPaqueterias()
+  }, [])
+
+  useEffect(() => {
+    if (clienteSeleccionado) {
+      fetchPedidos()
+    }
   }, [clienteSeleccionado])
+
+  const SelectorCliente = () => (
+    <div className="w-full sm:w-72">
+      <Select 
+        value={clienteSeleccionado?.id?.toString() || ''} 
+        onValueChange={(val) => {
+          const cl = clientes.find(c => c.id.toString() === val)
+          setClienteSeleccionado(cl)
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Seleccionar Cliente" />
+        </SelectTrigger>
+        <SelectContent>
+          {clientes.map(cliente => (
+            <SelectItem key={cliente.id} value={cliente.id.toString()}>
+              {cliente.nombre}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
 
   if (!clienteSeleccionado) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <h2 className="text-xl font-semibold text-gray-700">Selecciona un cliente en el Dashboard para ver sus pedidos</h2>
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 text-center">
+        <h2 className="text-xl font-semibold text-gray-700">Selecciona un cliente para ver y cargar sus pedidos</h2>
+        <SelectorCliente />
       </div>
     )
   }
@@ -48,9 +85,9 @@ export const CargarPedidos = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div>
+        <div className="flex items-center gap-4">
           <h2 className="text-2xl font-bold tracking-tight">Cargar Pedidos</h2>
-          <p className="text-sm text-gray-500">Gestionando pedidos de: {clienteSeleccionado.nombre}</p>
+          <SelectorCliente />
         </div>
         <div className="flex space-x-2">
           <Button variant="outline" onClick={() => setModalCsvOpen(true)}>

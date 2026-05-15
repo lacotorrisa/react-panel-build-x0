@@ -37,12 +37,12 @@ export const Login = () => {
     try {
       setLoading(true)
       await login(data.email, data.password)
-      toast.success('Sesión iniciada correctamente')
-      // Navigation is handled in useEffect when 'rol' becomes available
+      // Recarga completa para que la sesión quede 100% lista
+      window.location.href = '/'
     } catch (error) {
       toast.error('Error al iniciar sesión', {
-        description: error.message === 'Invalid login credentials' 
-          ? 'Credenciales incorrectas' 
+        description: error.message === 'Invalid login credentials'
+          ? 'Credenciales incorrectas. Verifica tu correo y contraseña.'
           : error.message
       })
       setLoading(false)

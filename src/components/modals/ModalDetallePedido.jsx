@@ -24,29 +24,40 @@ export const ModalDetallePedido = ({ open, onOpenChange, pedido }) => {
   }, [open, pedido])
 
   const fetchEventos = async () => {
-    const { data } = await supabase
-      .from('pedido_eventos')
-      .select('*, profiles(nombre, rol)')
-      .eq('pedido_id', pedido.id)
-      .order('created_at', { ascending: false })
-    
-    if (data) setEventos(data)
+    try {
+      const { data, error } = await supabase
+        .from('pedido_eventos')
+        .select('*, profiles(nombre, rol)')
+        .eq('pedido_id', pedido.id)
+        .order('created_at', { ascending: false })
+      
+      if (error) console.error('Error al cargar eventos:', error)
+      if (data) setEventos(data)
+    } catch (err) {
+      console.error('fetchEventos error:', err)
+    }
   }
 
   const handleAddObservacion = async () => {
-    if (!observacion || !tipoEvento) return
+    if (!observacion.trim() || !tipoEvento) return
+    if (!user?.id) {
+      toast.error('Error de sesión. Por favor recarga la página.')
+      return
+    }
     try {
-      await supabase.from('pedido_eventos').insert({
+      const { error } = await supabase.from('pedido_eventos').insert({
         pedido_id: pedido.id,
         tipo: tipoEvento,
-        descripcion: observacion,
+        descripcion: observacion.trim(),
         usuario_id: user.id
       })
+      if (error) throw error
       toast.success('Observación agregada')
       setObservacion('')
       fetchEventos()
     } catch (error) {
-      toast.error('Error al agregar observación')
+      console.error('handleAddObservacion error:', error)
+      toast.error('Error al agregar observación: ' + error.message)
     }
   }
 
@@ -64,7 +75,7 @@ export const ModalDetallePedido = ({ open, onOpenChange, pedido }) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
         <DialogHeader className="p-6 pb-2 border-b">
-          <DialogTitle className="text-xl">Detalle de Pedido: {pedido.id_compra}</DialogTitle>
+          <DialogTitle className="text-xl">Detalle de Pedido ({pedido.tipo_compra})</DialogTitle>
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto p-6">
@@ -88,7 +99,7 @@ export const ModalDetallePedido = ({ open, onOpenChange, pedido }) => {
                 <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
                   <p><span className="font-medium text-gray-700">Status:</span> <Badge variant="outline" className="ml-2">{pedido.status.toUpperCase()}</Badge></p>
                   <p><span className="font-medium text-gray-700">Guía:</span> {pedido.guia || 'Sin asignar'}</p>
-                  <p><span className="font-medium text-gray-700">Plataforma:</span> {pedido.plataforma}</p>
+
                   <p><span className="font-medium text-gray-700">Fecha Pedido:</span> {format(new Date(pedido.fecha_pedido), 'dd/MM/yyyy')}</p>
                 </div>
               </div>

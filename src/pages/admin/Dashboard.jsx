@@ -81,7 +81,7 @@ export const Dashboard = () => {
       .select('*', { count: 'exact', head: true })
       .eq('cliente_id', clienteSeleccionado.id)
       .eq('status', 'pendiente')
-      .lt('created_at', ayer.toISOString())
+      .lt('fecha_pedido', ayer.toISOString().split('T')[0])
 
     setRetrasos(count || 0)
   }

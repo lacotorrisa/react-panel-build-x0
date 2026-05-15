@@ -17,7 +17,6 @@ const clienteSchema = z.object({
   nombre: z.string().min(2, 'Nombre requerido'),
   email_remitente: z.string().email('Email inválido'),
   nombre_remitente: z.string().min(2, 'Nombre de remitente requerido'),
-  plataformas: z.string().min(1, 'Agrega al menos una plataforma separada por comas'),
   logo_url: z.string().optional()
 })
 
@@ -40,10 +39,8 @@ export const GestionClientes = () => {
   }, [])
 
   const onSubmit = async (data) => {
-    const plataformas = data.plataformas.split(',').map(p => p.trim()).filter(Boolean)
     const payload = {
-      ...data,
-      plataformas
+      ...data
     }
 
     try {
@@ -66,14 +63,13 @@ export const GestionClientes = () => {
     setValue('nombre', cliente.nombre)
     setValue('email_remitente', cliente.email_remitente)
     setValue('nombre_remitente', cliente.nombre_remitente)
-    setValue('plataformas', cliente.plataformas?.join(', '))
     setValue('logo_url', cliente.logo_url || '')
     setModalOpen(true)
   }
 
   const handleOpenNew = () => {
     setEditingCliente(null)
-    reset({ nombre: '', email_remitente: '', nombre_remitente: '', plataformas: '', logo_url: '' })
+    reset({ nombre: '', email_remitente: '', nombre_remitente: '', logo_url: '' })
     setModalOpen(true)
   }
 
@@ -105,7 +101,6 @@ export const GestionClientes = () => {
             <TableRow>
               <TableHead>Nombre</TableHead>
               <TableHead>Remitente</TableHead>
-              <TableHead>Plataformas</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -122,13 +117,7 @@ export const GestionClientes = () => {
                     <p className="text-gray-500">{cliente.email_remitente}</p>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {cliente.plataformas?.map(p => (
-                      <Badge key={p} variant="secondary" className="text-xs">{p}</Badge>
-                    ))}
-                  </div>
-                </TableCell>
+
                 <TableCell>
                   <Badge className={cliente.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                     {cliente.activo ? 'Activo' : 'Inactivo'}
@@ -173,11 +162,7 @@ export const GestionClientes = () => {
                 {errors.email_remitente && <p className="text-red-500 text-xs mt-1">{errors.email_remitente.message}</p>}
               </div>
             </div>
-            <div>
-              <Label>Plataformas (separadas por comas)</Label>
-              <Input {...register('plataformas')} placeholder="Shopify, WooCommerce, Instagram" />
-              {errors.plataformas && <p className="text-red-500 text-xs mt-1">{errors.plataformas.message}</p>}
-            </div>
+
             <div>
               <Label>URL Logo (Opcional)</Label>
               <Input {...register('logo_url')} />

@@ -19,8 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 
 const pedidoSchema = z.object({
   fecha_pedido: z.string().min(1, 'La fecha es requerida'),
-  id_compra: z.string().min(1, 'El ID es requerido'),
-  plataforma: z.string().min(1, 'Selecciona una plataforma'),
+  tipo_compra: z.enum(['Exclusivo', 'General']),
   nombre_comprador: z.string().min(2, 'Nombre muy corto'),
   direccion: z.string().min(5, 'Dirección requerida'),
   referencias: z.string().optional(),
@@ -38,6 +37,7 @@ export const ModalNuevoPedido = ({ open, onOpenChange, cliente, onSuccess }) => 
     resolver: zodResolver(pedidoSchema),
     defaultValues: {
       fecha_pedido: new Date().toISOString().split('T')[0],
+      tipo_compra: 'General',
       productos: [{ nombre: '', talla: '', cantidad: 1 }]
     }
   })
@@ -80,23 +80,17 @@ export const ModalNuevoPedido = ({ open, onOpenChange, cliente, onSuccess }) => 
               {errors.fecha_pedido && <p className="text-red-500 text-xs mt-1">{errors.fecha_pedido.message}</p>}
             </div>
             <div>
-              <Label>ID de Compra</Label>
-              <Input {...register('id_compra')} placeholder="Ej: #10023" />
-              {errors.id_compra && <p className="text-red-500 text-xs mt-1">{errors.id_compra.message}</p>}
-            </div>
-            <div>
-              <Label>Plataforma</Label>
-              <Select onValueChange={val => setValue('plataforma', val)}>
+              <Label>Tipo de Compra</Label>
+              <Select onValueChange={val => setValue('tipo_compra', val)} defaultValue="General">
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {cliente?.plataformas?.map(p => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
+                  <SelectItem value="General">General</SelectItem>
+                  <SelectItem value="Exclusivo">Exclusivo</SelectItem>
                 </SelectContent>
               </Select>
-              {errors.plataforma && <p className="text-red-500 text-xs mt-1">{errors.plataforma.message}</p>}
+              {errors.tipo_compra && <p className="text-red-500 text-xs mt-1">{errors.tipo_compra.message}</p>}
             </div>
           </div>
 

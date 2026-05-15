@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { AlertCircle } from 'lucide-react'
 import useAppStore from '../../store/useAppStore'
 import { supabase } from '../../lib/supabase'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
 import { TablaPedidos } from '../../components/tables/TablaPedidos'
 import { ModalDetallePedido } from '../../components/modals/ModalDetallePedido'
 
 export const PedidosRetraso = () => {
-  const { clienteSeleccionado } = useAppStore()
+  const { clienteSeleccionado, setClienteSeleccionado } = useAppStore()
   const [pedidos, setPedidos] = useState([])
+  const [clientes, setClientes] = useState([])
   const [paqueterias, setPaqueterias] = useState([])
   const [selectedPedido, setSelectedPedido] = useState(null)
 
@@ -21,8 +23,8 @@ export const PedidosRetraso = () => {
       .select('*')
       .eq('cliente_id', clienteSeleccionado.id)
       .eq('status', 'pendiente')
-      .lt('created_at', ayer.toISOString())
-      .order('created_at', { ascending: true })
+      .lt('fecha_pedido', ayer.toISOString())
+      .order('fecha_pedido', { ascending: true })
     
     if (data) setPedidos(data)
   }
@@ -32,15 +34,50 @@ export const PedidosRetraso = () => {
     if (data) setPaqueterias(data)
   }
 
+  const fetchClientes = async () => {
+    const { data } = await supabase.from('clientes').select('*').eq('activo', true)
+    if (data) setClientes(data)
+  }
+
   useEffect(() => {
-    fetchPedidos()
+    fetchClientes()
     fetchPaqueterias()
+  }, [])
+
+  useEffect(() => {
+    if (clienteSeleccionado) {
+      fetchPedidos()
+    }
   }, [clienteSeleccionado])
+
+  const SelectorCliente = () => (
+    <div className="w-full sm:w-72">
+      <Select 
+        value={clienteSeleccionado?.id?.toString() || ''} 
+        onValueChange={(val) => {
+          const cl = clientes.find(c => c.id.toString() === val)
+          setClienteSeleccionado(cl)
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Seleccionar Cliente" />
+        </SelectTrigger>
+        <SelectContent>
+          {clientes.map(cliente => (
+            <SelectItem key={cliente.id} value={cliente.id.toString()}>
+              {cliente.nombre}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
 
   if (!clienteSeleccionado) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh]">
-        <h2 className="text-xl font-semibold text-gray-700">Selecciona un cliente en el Dashboard</h2>
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 text-center">
+        <h2 className="text-xl font-semibold text-gray-700">Selecciona un cliente para ver sus pedidos con retraso</h2>
+        <SelectorCliente />
       </div>
     )
   }
@@ -54,6 +91,7 @@ export const PedidosRetraso = () => {
           </h2>
           <p className="text-sm text-gray-500">Pedidos pendientes de asignación por más de 24 hrs.</p>
         </div>
+        <SelectorCliente />
       </div>
 
       <TablaPedidos 
