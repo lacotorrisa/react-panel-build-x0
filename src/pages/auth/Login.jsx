@@ -37,8 +37,7 @@ export const Login = () => {
     try {
       setLoading(true)
       await login(data.email, data.password)
-      // Recarga completa para que la sesión quede 100% lista
-      window.location.href = '/'
+      // El useEffect se encargará de redirigir al detectar el usuario y el rol
     } catch (error) {
       toast.error('Error al iniciar sesión', {
         description: error.message === 'Invalid login credentials'
