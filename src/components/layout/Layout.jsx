@@ -48,7 +48,7 @@ export const Layout = () => {
     <div className="min-h-screen bg-[#F8F9FA] flex flex-col md:flex-row">
       {/* Mobile Header */}
       <div className="md:hidden bg-[#1a1a2e] text-white p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-[#FF6600]">Colivery</h1>
+        <img src="/logo-blanco.svg" alt="Colivery" className="h-8" />
         <button onClick={() => setSidebarOpen(!sidebarOpen)}>
           {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -63,7 +63,10 @@ export const Layout = () => {
         flex flex-col
       `}>
         <div className="p-6 hidden md:block">
-          <h1 className="text-2xl font-bold text-[#FF6600]">Colivery<span className="text-white text-sm font-normal ml-2">Admin</span></h1>
+          <div className="flex items-center">
+            <img src="/logo-blanco.svg" alt="Colivery" className="h-8" />
+            <span className="text-white text-sm font-normal ml-2 mt-1">Admin</span>
+          </div>
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1">

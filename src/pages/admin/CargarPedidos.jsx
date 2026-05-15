@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { Button } from '../../components/ui/button'
 import { TablaPedidos } from '../../components/tables/TablaPedidos'
 import { ModalNuevoPedido } from '../../components/modals/ModalNuevoPedido'
-// import { ModalImportarCSV } from '../../components/modals/ModalImportarCSV'
+import { ModalImportarCSV } from '../../components/modals/ModalImportarCSV'
 import { ModalDetallePedido } from '../../components/modals/ModalDetallePedido'
 
 export const CargarPedidos = () => {
@@ -79,7 +79,7 @@ export const CargarPedidos = () => {
         }}
       />
 
-      {/* <ModalImportarCSV
+      <ModalImportarCSV
         open={modalCsvOpen}
         onOpenChange={setModalCsvOpen}
         cliente={clienteSeleccionado}
@@ -87,7 +87,7 @@ export const CargarPedidos = () => {
           setModalCsvOpen(false)
           fetchPedidos()
         }}
-      /> */}
+      />
 
       {selectedPedido && (
         <ModalDetallePedido

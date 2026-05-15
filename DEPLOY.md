@@ -30,8 +30,8 @@ VITE_RESEND_API_KEY=pegar_aqui_tu_key
 VITE_APP_URL=https://colivery.mx
 
 ## Paso 4 — Probar localmente (opcional)
-pnpm install
-pnpm run dev
+npm install
+npm run dev
 Abrir http://localhost:5173
 
 ## Paso 5 — Subir a GitHub
