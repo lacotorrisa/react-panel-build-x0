@@ -184,6 +184,7 @@ drop policy if exists "Todos ven clientes" on clientes;
 drop policy if exists "Cliente ve su propio registro" on clientes;
 drop policy if exists "Admin gestiona clientes" on clientes;
 drop policy if exists "Paqueteria ve clientes" on clientes;
+drop policy if exists "Logistica ve clientes" on clientes;
 
 -- Admin gestiona todo
 create policy "Admin gestiona clientes" on clientes for all using (get_my_rol() = 'admin');
@@ -219,6 +220,7 @@ drop policy if exists "Admin gestiona pedidos" on pedidos;
 drop policy if exists "Logistica ve todos los pedidos" on pedidos;
 drop policy if exists "Logistica actualiza pedidos" on pedidos;
 drop policy if exists "Cliente ve sus propios pedidos" on pedidos;
+drop policy if exists "Cliente ve sus pedidos" on pedidos;
 
 -- Admin todo
 create policy "Admin gestiona pedidos" on pedidos for all using (get_my_rol() = 'admin');
