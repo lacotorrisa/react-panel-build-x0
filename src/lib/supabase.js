@@ -89,7 +89,7 @@ if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'tu_url_de_supabase') {
       signInWithPassword: async ({ email, password }) => {
         const mockUser = MOCK_USERS[email]
         if (!mockUser || mockUser.password !== password) {
-          return { data: {}, error: { message: 'Credenciales incorrectas. Usa admin@colivery.mx / admin123' } }
+          return { data: {}, error: { message: 'Credenciales incorrectas. Verifica tu correo y contraseña.' } }
         }
         const session = { user: { id: mockUser.id, email } }
         currentMockSession = session

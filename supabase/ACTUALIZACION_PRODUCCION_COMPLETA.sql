@@ -260,6 +260,116 @@ create policy "Todos los autenticados ven empresas logisticas" on empresas_logis
 );
 
 -- ============================================================
--- ✅ ¡MIGRACIÓN DE SEGURIDAD COMPLETADA CON ÉXITO!
--- Todos los permisos están alienados y listos para producción.
+-- 5. CARGA INICIAL DE DATOS: CORTE ABRIL 2026 E INVENTARIO
+-- ============================================================
+
+-- 5.1 Garantizar que el cliente "La Cotorrisa" exista con su balance inicial de $31,154.20
+INSERT INTO clientes (nombre, activo, balance_inicial)
+SELECT 'La Cotorrisa', true, 31154.20
+WHERE NOT EXISTS (SELECT 1 FROM clientes WHERE nombre = 'La Cotorrisa');
+
+-- Asegurar balance inicial correcto si ya existía
+UPDATE clientes 
+SET balance_inicial = 31154.20 
+WHERE nombre = 'La Cotorrisa';
+
+-- 5.2 Garantizar que la bodega "Solin Logistics" exista
+INSERT INTO empresas_logisticas (nombre, activo)
+SELECT 'Solin Logistics', true
+WHERE NOT EXISTS (SELECT 1 FROM empresas_logisticas WHERE nombre = 'Solin Logistics');
+
+-- 5.3 Registrar el Corte de Balance de Abril 2026 si no existe
+INSERT INTO cliente_cortes_balance (
+  cliente_id, 
+  fecha_inicio, 
+  fecha_fin, 
+  ventas_general, 
+  ventas_exclusivos, 
+  comision_colivery, 
+  pasarela_pagos, 
+  costo_administracion, 
+  costo_software, 
+  gastos_adicionales, 
+  neto_favor, 
+  referencia, 
+  observaciones
+)
+SELECT 
+  (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1),
+  '2026-04-01',
+  '2026-04-30',
+  139208.00,                 -- lacotorrisa.shop
+  190696.00,                 -- lacotorrisamerch.com.mx
+  38139.20,                  -- 20% plataforma merch
+  5498.72,                   -- pasarela de pago shop
+  22273.28,                  -- plataforma (guías, almacenaje, etc.) shop
+  0.00,
+  22061.41,                  -- gastos adicionales (merch $12,969.00 + shop $9,092.41)
+  241931.39,                 -- neto consolidado a favor
+  'Reporte Ejecutivo Abril 2026',
+  'Carga inicial consolidada de Abril 2026 desde el Reporte Ejecutivo oficial (lacotorrisamerch.com.mx y lacotorrisa.shop).'
+WHERE NOT EXISTS (
+  SELECT 1 FROM cliente_cortes_balance 
+  WHERE cliente_id = (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1)
+    AND fecha_inicio = '2026-04-01'
+    AND fecha_fin = '2026-04-30'
+);
+
+-- 5.4 Cargar el Inventario detallado del reporte PDF a Solin Logistics (UPSERT seguro)
+
+-- Sudadera Acid Wash (117 piezas)
+INSERT INTO inventario (logistica_id, cliente_id, producto, cantidad)
+VALUES 
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Sudadera Acid Wash (Chica)', 5),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Sudadera Acid Wash (Mediana)', 23),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Sudadera Acid Wash (Grande)', 32),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Sudadera Acid Wash (XL)', 34),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Sudadera Acid Wash (XXL)', 23)
+ON CONFLICT (logistica_id, cliente_id, producto) 
+DO UPDATE SET cantidad = EXCLUDED.cantidad, updated_at = now();
+
+-- Playera Acid Wash (Tee) (48 piezas)
+INSERT INTO inventario (logistica_id, cliente_id, producto, cantidad)
+VALUES 
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Acid Wash (Tee) (Chica)', 3),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Acid Wash (Tee) (Mediana)', 14),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Acid Wash (Tee) (Grande)', 14),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Acid Wash (Tee) (XL)', 17)
+ON CONFLICT (logistica_id, cliente_id, producto) 
+DO UPDATE SET cantidad = EXCLUDED.cantidad, updated_at = now();
+
+-- Playera Oversize Blanca (69 piezas)
+INSERT INTO inventario (logistica_id, cliente_id, producto, cantidad)
+VALUES 
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Blanca (Chica)', 14),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Blanca (Mediana)', 15),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Blanca (Grande)', 21),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Blanca (XL)', 19)
+ON CONFLICT (logistica_id, cliente_id, producto) 
+DO UPDATE SET cantidad = EXCLUDED.cantidad, updated_at = now();
+
+-- Playera Oversize Negra (9 piezas)
+INSERT INTO inventario (logistica_id, cliente_id, producto, cantidad)
+VALUES 
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Negra (Chica)', 1),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Negra (Mediana)', 1),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Negra (Grande)', 4),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Playera Oversize Negra (XL)', 3)
+ON CONFLICT (logistica_id, cliente_id, producto) 
+DO UPDATE SET cantidad = EXCLUDED.cantidad, updated_at = now();
+
+-- Jersey — Cotorrisa (10 piezas)
+INSERT INTO inventario (logistica_id, cliente_id, producto, cantidad)
+VALUES 
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Jersey — Cotorrisa (Chica)', 1),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Jersey — Cotorrisa (Mediana)', 3),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Jersey — Cotorrisa (XL)', 4),
+  ((SELECT id FROM empresas_logisticas WHERE nombre = 'Solin Logistics' LIMIT 1), (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1), 'Jersey — Cotorrisa (XXL)', 2)
+ON CONFLICT (logistica_id, cliente_id, producto) 
+DO UPDATE SET cantidad = EXCLUDED.cantidad, updated_at = now();
+
+
+-- ============================================================
+-- ✅ ¡MIGRACIÓN DE SEGURIDAD Y CARGA DE REPORTES COMPLETADA CON ÉXITO!
+-- Todos los balances, inventarios y permisos están alineados y listos.
 -- ============================================================
