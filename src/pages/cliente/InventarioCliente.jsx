@@ -4,7 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table'
 import { Input } from '../../components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
-import { PackageSearch, Building2, ArrowUpDown } from 'lucide-react'
+import { PackageSearch, Building2, ArrowUpDown, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { toast } from 'sonner'
 
@@ -15,11 +15,16 @@ export const InventarioCliente = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [logisticaFilter, setLogisticaFilter] = useState('all')
+  const [dbError, setDbError] = useState(null)
 
   const fetchData = async () => {
-    if (!perfil?.cliente_id) return
+    if (!perfil?.cliente_id) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setDbError(null)
     try {
-      setLoading(true)
       const [invRes, logRes] = await Promise.all([
         supabase
           .from('inventario')
@@ -33,9 +38,13 @@ export const InventarioCliente = () => {
       ])
       
       if (invRes.error) throw invRes.error
+      if (logRes.error) throw logRes.error
+
       setInventario(invRes.data || [])
       setEmpresasLogisticas(logRes.data || [])
     } catch (err) {
+      console.error('Error fetching inventory:', err)
+      setDbError(err.message || 'Error al conectar con la base de datos')
       toast.error('Error al cargar inventario')
     } finally {
       setLoading(false)
@@ -43,10 +52,73 @@ export const InventarioCliente = () => {
   }
 
   useEffect(() => {
-    if (perfil?.cliente_id) {
+    if (perfil) {
       fetchData()
+    } else {
+      setLoading(false)
     }
   }, [perfil])
+
+  // Mensaje de diagnóstico si no hay cliente_id o hay cargando
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#FF6600] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
+  }
+
+  if (!perfil?.cliente_id) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-white rounded-xl border max-w-2xl mx-auto shadow-lg space-y-4 my-8">
+        <AlertCircle className="h-16 w-16 text-orange-500 animate-pulse" />
+        <h3 className="text-xl font-black text-gray-800">⚠️ Cuenta de Cliente Sin Vincular</h3>
+        <p className="text-sm text-gray-500 max-w-md">
+          Tu usuario de correo <strong className="text-gray-800">{perfil?.email}</strong> tiene el rol de cliente, pero no está vinculado a ninguna marca en la base de datos de producción de Supabase.
+        </p>
+        <div className="bg-orange-50 p-5 rounded-xl text-left text-xs text-orange-900 border border-orange-200 space-y-3 w-full">
+          <p className="font-bold text-sm">🛠️ Para solucionarlo en 10 segundos:</p>
+          <p>Copia y ejecuta la siguiente consulta SQL en tu <strong>Supabase Dashboard → SQL Editor → New Query</strong>:</p>
+          <pre className="bg-[#1a1a2e] text-orange-200 p-4 rounded-lg font-mono overflow-x-auto text-[11px] leading-relaxed border border-orange-300/30">
+{`UPDATE profiles 
+SET rol = 'cliente', 
+    cliente_id = (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1),
+    nombre = 'La Cotorrisa Admin'
+WHERE email = 'lacotorrisa@colivery.mx';`}
+          </pre>
+          <p className="text-[10px] text-orange-700 font-medium">💡 Nota: Si aún no existe el cliente 'La Cotorrisa' en la tabla clientes, primero ejecuta el archivo <code>ACTUALIZACION_PRODUCCION_COMPLETA.sql</code> que creamos en el proyecto.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (dbError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[65vh] text-center p-8 bg-white rounded-xl border max-w-3xl mx-auto shadow-lg space-y-4 my-8">
+        <AlertCircle className="h-16 w-16 text-red-500 animate-bounce" />
+        <h3 className="text-xl font-black text-red-600">⚠️ Error de Base de Datos Detectado</h3>
+        <p className="text-sm text-gray-500 max-w-lg">
+          No pudimos consultar tu inventario debido a que algunas tablas o permisos RLS faltan en la base de datos de producción de Supabase.
+        </p>
+        <div className="bg-red-50/50 p-3 rounded-lg border border-red-100 text-xs text-red-700 font-mono text-left w-full">
+          <strong>Detalle Técnico:</strong> {dbError}
+        </div>
+        <div className="bg-orange-50 p-5 rounded-xl text-left text-xs text-orange-900 border border-orange-200 space-y-3 w-full">
+          <p className="font-bold text-sm">🚀 Solución en 1 Paso:</p>
+          <p>
+            Hemos preparado un script maestro unificado que crea todas las tablas de balance, corrige los roles de los usuarios y abre todos los permisos RLS.
+          </p>
+          <p className="font-semibold text-gray-700">Abre tu Supabase SQL Editor y ejecuta el contenido completo del archivo:</p>
+          <div className="bg-[#1a1a2e] text-white p-3.5 rounded-lg font-mono text-[11px] font-bold border border-gray-800">
+            📁 supabase / ACTUALIZACION_PRODUCCION_COMPLETA.sql
+          </div>
+          <p className="text-[10px] text-orange-700">
+            Una vez ejecutado ese script, vuelve a cargar esta página. Todo se sincronizará automáticamente.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   const filtered = inventario.filter(item => {
     const matchS = item.producto.toLowerCase().includes(searchTerm.toLowerCase())

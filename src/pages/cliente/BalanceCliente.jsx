@@ -21,7 +21,7 @@ const STATUS_COLORS = {
   problema:         'bg-red-200 text-red-900',
 }
 
-// Mapeador de precios unitarios exacto deducido del PDF real del cliente
+// Mapeador de precios unitarios
 const obtenerPrecioUnitario = (nombre) => {
   const n = nombre.toUpperCase();
   if (n.includes('HOODIE')) return 1749;
@@ -31,7 +31,7 @@ const obtenerPrecioUnitario = (nombre) => {
   if (n.includes('WHITETEE') || n.includes('TEE NEGRA')) return 749;
   if (n.includes('GERRY')) return 999;
   if (n.includes('ALGODON') || n.includes('ALGODÓN')) return 599;
-  return 649; // Precio default playera
+  return 649;
 }
 
 export const BalanceCliente = () => {
@@ -44,14 +44,17 @@ export const BalanceCliente = () => {
   const [productosMasVendidos, setProductosMasVendidos] = useState([])
   const [inventarioBajo, setInventarioBajo] = useState([])
   const [loading, setLoading] = useState(true)
-
-  // Selector de pestaña del PDF (Emulación)
-  const [pdfTab, setPdfTab] = useState('resumen') // 'resumen' | 'desglose' | 'mas_vendidos'
+  const [pdfTab, setPdfTab] = useState('resumen')
+  const [dbError, setDbError] = useState(null)
 
   const fetchData = async () => {
-    if (!perfil?.cliente_id) return
+    if (!perfil?.cliente_id) {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
+      setDbError(null)
       const [cliRes, cortesRes, transRes, pedTodosRes, invRes] = await Promise.all([
         supabase
           .from('clientes')
@@ -83,6 +86,8 @@ export const BalanceCliente = () => {
       if (cliRes.error) throw cliRes.error
       if (cortesRes.error) throw cortesRes.error
       if (transRes.error) throw transRes.error
+      if (pedTodosRes.error) throw pedTodosRes.error
+      if (invRes.error) throw invRes.error
 
       setSaldo(cliRes.data?.saldo || 0)
       setBalanceInicial(cliRes.data?.balance_inicial || 0)
@@ -92,12 +97,11 @@ export const BalanceCliente = () => {
       const orders = pedTodosRes.data || []
       setPedidosRecientes(orders.slice(0, 5))
 
-      // Existencias bajas en inventario
       if (invRes.data) {
         setInventarioBajo(invRes.data.filter(i => (i.cantidad || 0) < 15))
       }
 
-      // Agrupación dinámica para la tabla de Productos Más Vendidos
+      // Agrupación
       const prodMap = {}
       orders.forEach(p => {
         const prods = p.productos || []
@@ -119,7 +123,6 @@ export const BalanceCliente = () => {
         const precio = obtenerPrecioUnitario(p.nombreBase)
         p.ingresos = p.cantidad * precio
         
-        // Buscar stock actual en el inventario
         const itemInv = invRes.data?.find(inv => {
           const lowerInv = inv.producto.toLowerCase().trim()
           const lowerKey = p.producto.toLowerCase().trim()
@@ -129,28 +132,82 @@ export const BalanceCliente = () => {
         p.stock = itemInv ? itemInv.cantidad : 0
       })
       
-      // Ordenar por cantidad vendida descendente
       prodArray.sort((a, b) => b.cantidad - a.cantidad)
-      setProductosMasVendidos(prodArray.slice(0, 10)) // Mostrar top 10 más vendidos
+      setProductosMasVendidos(prodArray.slice(0, 10))
 
     } catch (err) {
+      console.error('Error cargando datos de cliente:', err)
+      setDbError(err.message || 'Error al conectar con la base de datos')
       toast.error('Error al cargar balance operativo')
-      console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (perfil?.cliente_id) {
+    if (perfil) {
       fetchData()
     }
   }, [perfil])
 
-  // Formateador de Moneda
+  // Formateador
   const fmt = (val) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(val || 0)
 
-  // Totales acumulados
+  // Mensaje de diagnóstico si no hay cliente_id
+  if (!loading && !perfil?.cliente_id) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-white rounded-xl border max-w-2xl mx-auto shadow-lg space-y-4 my-8">
+        <AlertTriangle className="h-16 w-16 text-orange-500 animate-pulse" />
+        <h3 className="text-xl font-black text-gray-800">⚠️ Cuenta de Cliente Sin Vincular</h3>
+        <p className="text-sm text-gray-500 max-w-md">
+          Tu usuario de correo <strong className="text-gray-800">{perfil?.email}</strong> tiene el rol de cliente, pero no está vinculado a ninguna marca en la base de datos de producción de Supabase (el campo <code>cliente_id</code> está vacío).
+        </p>
+        <div className="bg-orange-50 p-5 rounded-xl text-left text-xs text-orange-900 border border-orange-200 space-y-3 w-full">
+          <p className="font-bold text-sm">🛠️ Para solucionarlo en 10 segundos:</p>
+          <p>Copia y ejecuta la siguiente consulta SQL en tu <strong>Supabase Dashboard → SQL Editor → New Query</strong>:</p>
+          <pre className="bg-[#1a1a2e] text-orange-200 p-4 rounded-lg font-mono overflow-x-auto text-[11px] leading-relaxed border border-orange-300/30">
+{`UPDATE profiles 
+SET rol = 'cliente', 
+    cliente_id = (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1),
+    nombre = 'La Cotorrisa Admin'
+WHERE email = 'lacotorrisa@colivery.mx';`}
+          </pre>
+          <p className="text-[10px] text-orange-700 font-medium">💡 Nota: Si aún no existe el cliente 'La Cotorrisa' en la tabla clientes, primero ejecuta el archivo <code>ACTUALIZACION_PRODUCCION_COMPLETA.sql</code> que creamos en el proyecto.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Mensaje de diagnóstico si hay error de tablas/RLS en la base de datos
+  if (!loading && dbError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[65vh] text-center p-8 bg-white rounded-xl border max-w-3xl mx-auto shadow-lg space-y-4 my-8">
+        <AlertTriangle className="h-16 w-16 text-red-500 animate-bounce" />
+        <h3 className="text-xl font-black text-red-600">⚠️ Error de Base de Datos Detectado</h3>
+        <p className="text-sm text-gray-500 max-w-lg">
+          No pudimos consultar tus balances debido a que algunas tablas o permisos RLS faltan en la base de datos de producción de Supabase.
+        </p>
+        <div className="bg-red-50/50 p-3 rounded-lg border border-red-100 text-xs text-red-700 font-mono text-left w-full">
+          <strong>Detalle Técnico:</strong> {dbError}
+        </div>
+        <div className="bg-orange-50 p-5 rounded-xl text-left text-xs text-orange-900 border border-orange-200 space-y-3 w-full">
+          <p className="font-bold text-sm">🚀 Solución en 1 Paso:</p>
+          <p>
+            Hemos preparado un script maestro unificado que crea todas las tablas de balance, corrige los roles de los usuarios (incluyendo a <code>admin@colivery.mx</code> para que no aparezca como cliente) y abre todos los permisos RLS.
+          </p>
+          <p className="font-semibold text-gray-700">Abre tu Supabase SQL Editor y ejecuta el contenido completo del archivo:</p>
+          <div className="bg-[#1a1a2e] text-white p-3.5 rounded-lg font-mono text-[11px] font-bold border border-gray-800">
+            📁 supabase / ACTUALIZACION_PRODUCCION_COMPLETA.sql
+          </div>
+          <p className="text-[10px] text-orange-700">
+            Una vez ejecutado ese script, vuelve a cargar esta página. Todo se sincronizará automáticamente y tus balances y payouts aparecerán al instante.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Totales
   const totalGeneral = cortes.reduce((acc, c) => acc + (c.ventas_general || 0), 0)
   const totalExclusivos = cortes.reduce((acc, c) => acc + (c.ventas_exclusivos || 0), 0)
   const totalVentasBrutas = totalGeneral + totalExclusivos
@@ -167,7 +224,6 @@ export const BalanceCliente = () => {
   const totalNetoFavor = cortes.reduce((acc, c) => acc + (c.neto_favor || 0), 0)
   const totalPagado = transferencias.reduce((acc, t) => acc + (t.monto || 0), 0)
 
-  // Desglose
   const comisionColiverySum = cortes.reduce((acc, c) => acc + (c.comision_colivery || 0), 0)
   const otrasDeduccionesSum = totalDeducciones - comisionColiverySum
 
@@ -180,7 +236,6 @@ export const BalanceCliente = () => {
           <p className="text-sm text-gray-500 font-semibold mt-0.5">La Cotorrisamerch · Período: 31 de marzo de 2026 - 26 de mayo de 2026</p>
         </div>
         
-        {/* Selector de Vistas Estilo Reporte PDF */}
         <div className="flex bg-gray-100 p-1 rounded-lg border shrink-0">
           <button 
             onClick={() => setPdfTab('resumen')}
@@ -203,9 +258,6 @@ export const BalanceCliente = () => {
         </div>
       </div>
 
-      {/* ────────────────── SECCIÓN EMULACIÓN REPORTE PDF ────────────────── */}
-
-      {/* VISTA 1: RESUMEN DE BALANCE (PÁGINA 1 DEL PDF) */}
       {pdfTab === 'resumen' && (
         <Card className="border shadow-lg bg-white overflow-hidden max-w-3xl mx-auto">
           <div className="px-6 py-4 bg-gray-50 border-b flex justify-between items-center">
@@ -214,63 +266,51 @@ export const BalanceCliente = () => {
           </div>
           <CardContent className="p-6">
             <div className="divide-y space-y-4">
-              
-              {/* Balance Inicial */}
               <div className="flex justify-between items-center py-2 text-sm font-semibold text-gray-700">
                 <span>Balance inicial — 31 de marzo de 2026</span>
                 <span>{fmt(balanceInicial)}</span>
               </div>
 
-              {/* Cambio de balance por actividad */}
               <div className="pt-4 space-y-2.5">
                 <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Cambio de balance por actividad</p>
-                
                 <div className="flex justify-between items-center text-sm text-gray-600">
-                  <span className="flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-green-500" /> Ingresos por productos (Ventas Brutas)</span>
+                  <span className="flex items-center gap-1.5"><Package className="w-4 h-4 text-green-500" /> Ingresos por productos (Ventas Brutas)</span>
                   <span>{fmt(totalVentasBrutas)}</span>
                 </div>
-                
                 <div className="flex justify-between items-center text-sm text-red-500 font-medium">
                   <span className="flex items-center gap-1.5"><TrendingDown className="w-4 h-4 text-red-400" /> Comisión de plataforma (20% Colivery)</span>
                   <span>-{fmt(comisionColiverySum)}</span>
                 </div>
-
                 <div className="flex justify-between items-center text-sm text-red-500 font-medium">
                   <span className="flex items-center gap-1.5"><ArrowDownCircle className="w-4 h-4 text-red-400" /> Costos de envío / deducciones</span>
                   <span>-{fmt(otrasDeduccionesSum)}</span>
                 </div>
               </div>
 
-              {/* Cambio neto por actividad */}
               <div className="pt-4 space-y-2">
                 <div className="flex justify-between items-center text-sm font-semibold text-gray-700 py-1">
                   <span>Cambio neto de balance por actividad</span>
                   <span>{fmt(totalNetoFavor)}</span>
                 </div>
-                
                 <div className="flex justify-between items-center text-sm font-semibold text-red-600 py-1">
                   <span>Total de pagos realizados (SPEI Payouts)</span>
                   <span>-{fmt(totalPagado)}</span>
                 </div>
               </div>
 
-              {/* Balance Final (Saldo Actual) */}
               <div className="pt-4">
                 <div className="flex justify-between items-center bg-green-50 p-4 rounded-xl border border-green-200">
                   <span className="text-base font-black text-green-800">Balance final — 26 de mayo de 2026</span>
                   <span className="text-2xl font-black text-green-700">{fmt(saldo)}</span>
                 </div>
               </div>
-
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* VISTA 2: DESGLOSE DE ACTIVIDAD (PÁGINA 2 DEL PDF) */}
       {pdfTab === 'desglose' && (
         <div className="grid gap-6 max-w-4xl mx-auto md:grid-cols-2">
-          {/* Cobros */}
           <Card className="border shadow-md bg-white">
             <CardHeader className="border-b py-3 px-5">
               <CardTitle className="text-sm font-bold text-gray-800">Desglose de Cobros por Actividad</CardTitle>
@@ -296,7 +336,6 @@ export const BalanceCliente = () => {
             </CardContent>
           </Card>
 
-          {/* Pagos Realizados */}
           <Card className="border shadow-md bg-white">
             <CardHeader className="border-b py-3 px-5">
               <CardTitle className="text-sm font-bold text-gray-800">Pagos Realizados (Payouts)</CardTitle>
@@ -320,7 +359,6 @@ export const BalanceCliente = () => {
         </div>
       )}
 
-      {/* VISTA 3: PRODUCTOS MÁS VENDIDOS (PÁGINA 3 DEL PDF) */}
       {pdfTab === 'mas_vendidos' && (
         <Card className="border shadow-md bg-white max-w-4xl mx-auto">
           <CardHeader className="border-b py-3 px-5 flex flex-row items-center justify-between">
@@ -367,10 +405,8 @@ export const BalanceCliente = () => {
         </Card>
       )}
 
-      {/* ────────────────── SECCIÓN METRICAS AUXILIARES DEL DASHBOARD ────────────────── */}
-
+      {/* Métricas Auxiliares */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* PEDIDOS RECIENTES */}
         <Card className="border shadow-sm bg-white">
           <CardHeader className="border-b py-3 px-4 flex flex-row items-center justify-between">
             <div>
@@ -404,7 +440,6 @@ export const BalanceCliente = () => {
           </CardContent>
         </Card>
 
-        {/* STOCK BAJO O CRÍTICO */}
         <Card className="border shadow-sm bg-white">
           <CardHeader className="border-b py-3 px-4 flex flex-row items-center justify-between">
             <div>
