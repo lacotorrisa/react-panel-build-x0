@@ -3,7 +3,7 @@ import { AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { TablaPedidos } from '../../components/tables/TablaPedidos'
-import { ModalDetallePedido } from '../../components/modals/ModalDetallePedido'
+import { ModalDetallePedidoLogistica } from '../../components/modals/ModalDetallePedidoLogistica'
 
 export const MisPedidos = () => {
   const { perfil } = useAuth()
@@ -13,22 +13,16 @@ export const MisPedidos = () => {
   const [retrasos, setRetrasos] = useState(0)
 
   const fetchPedidos = async () => {
-    // Solin Logistics maneja todas las paqueterías
-    let query = supabase.from('pedidos').select('*').order('created_at', { ascending: false })
-    
-    // Si tuviera un ID específico, filtraríamos, pero Solin maneja todo:
-    // if (perfil.paqueteria_id) query = query.eq('paqueteria_id', perfil.paqueteria_id)
-    
-    const { data } = await query
-    
+    const { data } = await supabase
+      .from('pedidos')
+      .select('*')
+      .order('created_at', { ascending: true })
+
     if (data) {
       setPedidos(data)
-      
-      // Calculate retrasos
       const ayer = new Date()
       ayer.setDate(ayer.getDate() - 1)
-      const rts = data.filter(p => p.status === 'pendiente' && new Date(p.created_at) < ayer)
-      setRetrasos(rts.length)
+      setRetrasos(data.filter(p => p.status === 'pendiente' && new Date(p.created_at) < ayer).length)
     }
   }
 
@@ -59,23 +53,25 @@ export const MisPedidos = () => {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Mis Pedidos</h2>
-          <p className="text-sm text-gray-500">Asigna guías y notifica a los compradores.</p>
+          <p className="text-sm text-gray-500">Asigna guías, paquetería y levanta reportes.</p>
         </div>
       </div>
 
-      <TablaPedidos 
+      <TablaPedidos
         mode="paqueteria"
-        pedidos={pedidos} 
+        pedidos={pedidos}
         paqueterias={paqueterias}
         onRefresh={fetchPedidos}
         onViewDetails={setSelectedPedido}
       />
 
       {selectedPedido && (
-        <ModalDetallePedido
+        <ModalDetallePedidoLogistica
           open={!!selectedPedido}
           onOpenChange={(open) => !open && setSelectedPedido(null)}
           pedido={selectedPedido}
+          paqueterias={paqueterias}
+          onRefresh={fetchPedidos}
         />
       )}
     </div>

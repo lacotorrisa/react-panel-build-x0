@@ -1,135 +1,244 @@
 import React, { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
-import { 
-  LayoutDashboard, 
-  Package, 
-  Users, 
-  Truck, 
-  Settings, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  Package,
+  Users,
+  Truck,
+  Settings,
+  LogOut,
   Menu,
-  X,
   History,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  ClipboardList,
+  CheckSquare,
+  Warehouse,
+  Building2,
+  Scale
 } from 'lucide-react'
 
 export const Layout = () => {
   const { rol, user, perfil, logout } = useAuth()
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   const adminLinks = [
-    { name: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={20} /> },
-    { name: 'Cargar Pedidos', path: '/admin/pedidos', icon: <Package size={20} /> },
-    { name: 'Entregados', path: '/admin/entregados', icon: <History size={20} /> },
-    { name: 'Con Retraso', path: '/admin/retrasos', icon: <AlertCircle size={20} /> },
-    { name: 'Clientes', path: '/admin/clientes', icon: <Users size={20} /> },
-    { name: 'Paqueterías', path: '/admin/paqueterias', icon: <Truck size={20} /> },
-    { name: 'Usuarios', path: '/admin/usuarios', icon: <Settings size={20} /> },
+    { name: 'Dashboard',      path: '/admin/dashboard',   icon: LayoutDashboard },
+    { name: 'Cargar Pedidos', path: '/admin/pedidos',     icon: Package },
+    { name: 'Entregados',     path: '/admin/entregados',  icon: History },
+    { name: 'Con Retraso',    path: '/admin/retrasos',    icon: AlertCircle },
+    { name: 'Recepciones',    path: '/admin/recepciones', icon: ClipboardList },
+    { name: 'Inventario',     path: '/admin/inventario',  icon: Warehouse },
+    { name: 'Empresas Log.',  path: '/admin/empresas-logisticas', icon: Building2 },
+    { name: 'Reconciliación', path: '/admin/reconciliacion',      icon: Scale },
+    { name: 'Clientes',       path: '/admin/clientes',    icon: Users },
+    { name: 'Paqueterías',    path: '/admin/paqueterias', icon: Truck },
+    { name: 'Usuarios',       path: '/admin/usuarios',    icon: Settings },
   ]
 
-  const paqueteriaLinks = [
-    { name: 'Mis Pedidos', path: '/paqueteria/pedidos', icon: <Package size={20} /> },
+  const logisticaLinks = [
+    { name: 'Mis Pedidos',    path: '/logistica/pedidos',     icon: Package },
+    { name: 'Recepciones',    path: '/logistica/recepciones', icon: CheckSquare },
+    { name: 'Inventario',     path: '/logistica/inventario',  icon: Warehouse },
   ]
 
-  const links = rol === 'admin' ? adminLinks : paqueteriaLinks
+  const clienteLinks = [
+    { name: 'Mi Balance',     path: '/cliente/balance',    icon: Scale },
+    { name: 'Mis Pedidos',    path: '/cliente/pedidos',    icon: Package },
+    { name: 'Mi Inventario',  path: '/cliente/inventario', icon: Warehouse },
+  ]
+
+  const links = rol === 'admin' ? adminLinks : rol === 'cliente' ? clienteLinks : logisticaLinks
 
   const handleLogout = async () => {
-    try {
-      await logout()
-      navigate('/login')
-    } catch (error) {
-      console.error(error)
-    }
+    try { await logout(); navigate('/login') } catch (e) { console.error(e) }
   }
 
-  return (
-    <div className="min-h-screen bg-[#F8F9FA] flex flex-col md:flex-row">
-      {/* Mobile Header */}
-      <div className="md:hidden bg-[#1a1a2e] text-white p-4 flex justify-between items-center">
-        <img src="/logo-blanco.svg" alt="Colivery" className="h-8" />
-        <button onClick={() => setSidebarOpen(!sidebarOpen)}>
-          {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
+  /* ── Shared sidebar inner ── */
+  const Sidebar = ({ mobile = false }) => {
+    const isCollapsed = collapsed && !mobile
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* Sidebar */}
-      <aside className={`
-        fixed md:static inset-y-0 left-0 z-50
-        w-64 bg-[#1a1a2e] text-white
-        transform transition-transform duration-200 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        flex flex-col
-      `}>
-        <div className="p-6 hidden md:block">
-          <div className="flex items-center">
-            <img src="/logo-blanco.svg" alt="Colivery" className="h-8" />
-            <span className="text-white text-sm font-normal ml-2 mt-1">Admin</span>
-          </div>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)'
+        }}>
+          {!isCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <img src="/logo-blanco.svg" alt="Colivery" style={{ height: 32 }} />
+            </div>
+          )}
+          {isCollapsed && <div style={{ width: 32 }} />}
+
+          {mobile ? (
+            <button onClick={() => setMobileOpen(false)}
+              style={{ color: '#9ca3af', cursor: 'pointer', background: 'none', border: 'none', padding: 4 }}>
+              <X size={20} />
+            </button>
+          ) : (
+            <button onClick={() => setCollapsed(!collapsed)}
+              style={{ color: '#9ca3af', cursor: 'pointer', background: 'none', border: 'none', padding: 4 }}
+              title={isCollapsed ? 'Expandir' : 'Colapsar'}>
+              {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+            </button>
+          )}
         </div>
 
-        <nav className="flex-1 px-4 py-4 space-y-1">
-          {links.map((link) => (
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
+          {links.map(({ name, path, icon: Icon }) => (
             <NavLink
-              key={link.name}
-              to={link.path}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) => `
-                flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                ${isActive 
-                  ? 'bg-[#FF6600] text-white' 
-                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              key={path}
+              to={path}
+              onClick={() => mobile && setMobileOpen(false)}
+              title={isCollapsed ? name : ''}
+              style={({ isActive }) => ({
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: isCollapsed ? 0 : 10,
+                justifyContent: isCollapsed ? 'center' : 'flex-start',
+                padding: isCollapsed ? '10px 0' : '10px 14px',
+                borderRadius: 8,
+                marginBottom: 2,
+                textDecoration: 'none',
+                fontSize: 14,
+                fontWeight: 500,
+                color: isActive ? '#ffffff' : '#9ca3af',
+                background: isActive ? '#FF6600' : 'transparent',
+                transition: 'background 0.15s, color 0.15s',
+              })}
+              onMouseEnter={e => {
+                if (!e.currentTarget.style.background.includes('FF6600')) {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
+                  e.currentTarget.style.color = '#ffffff'
                 }
-              `}
+              }}
+              onMouseLeave={e => {
+                if (!e.currentTarget.style.background.includes('FF6600')) {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = '#9ca3af'
+                }
+              }}
             >
-              <span className="mr-3">{link.icon}</span>
-              {link.name}
+              <Icon size={18} style={{ flexShrink: 0 }} />
+              {!isCollapsed && <span style={{ whiteSpace: 'nowrap' }}>{name}</span>}
             </NavLink>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-gray-700">
-          <div className="flex items-center px-4 py-2 mb-2">
-            <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-bold uppercase">
-              {perfil?.nombre?.charAt(0) || user?.email?.charAt(0)}
+        {/* Footer user */}
+        <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          {!isCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', marginBottom: 4 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%', background: '#FF6600',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 700, color: '#fff', textTransform: 'uppercase', flexShrink: 0
+              }}>
+                {(perfil?.nombre || user?.email || 'U').charAt(0)}
+              </div>
+              <div style={{ overflow: 'hidden' }}>
+                <p style={{ color: '#fff', fontSize: 13, fontWeight: 600, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {perfil?.nombre || user?.email}
+                </p>
+                <p style={{ color: '#6b7280', fontSize: 11, margin: 0, textTransform: 'capitalize' }}>{rol}</p>
+              </div>
             </div>
-            <div className="ml-3 overflow-hidden">
-              <p className="text-sm font-medium truncate">{perfil?.nombre || user?.email}</p>
-              <p className="text-xs text-gray-400 capitalize">{rol}</p>
-            </div>
-          </div>
+          )}
           <button
             onClick={handleLogout}
-            className="flex items-center w-full px-4 py-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-800 hover:text-white transition-colors"
+            title={isCollapsed ? 'Cerrar Sesión' : ''}
+            style={{
+              display: 'flex', flexDirection: 'row', alignItems: 'center',
+              gap: isCollapsed ? 0 : 10,
+              justifyContent: isCollapsed ? 'center' : 'flex-start',
+              width: '100%', padding: isCollapsed ? '10px 0' : '10px 14px',
+              borderRadius: 8, border: 'none', background: 'none',
+              color: '#9ca3af', cursor: 'pointer', fontSize: 14, fontWeight: 500
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#9ca3af' }}
           >
-            <LogOut size={18} className="mr-3" />
-            Cerrar Sesión
+            <LogOut size={18} style={{ flexShrink: 0 }} />
+            {!isCollapsed && <span>Cerrar Sesión</span>}
           </button>
         </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F8F9FA' }}>
+
+      {/* Desktop sidebar */}
+      <aside style={{
+        display: 'none',
+        flexDirection: 'column',
+        background: '#1a1a2e',
+        width: collapsed ? 64 : 240,
+        minHeight: '100vh',
+        flexShrink: 0,
+        transition: 'width 0.2s ease',
+        position: 'relative',
+        zIndex: 10
+      }} className="md-sidebar">
+        <style>{`.md-sidebar { display: flex !important; } @media (max-width: 767px) { .md-sidebar { display: none !important; } }`}</style>
+        <Sidebar />
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        {/* Desktop Header */}
-        <header className="hidden md:flex bg-white shadow-sm border-b border-gray-200 py-4 px-6 justify-end items-center">
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-[#6B7280]">Bienvenido, <strong className="text-[#1a1a2e]">{perfil?.nombre}</strong></span>
-          </div>
-        </header>
-
-        <div className="p-4 md:p-8">
-          <Outlet />
-        </div>
-      </main>
-
-      {/* Overlay for mobile sidebar */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-          onClick={() => setSidebarOpen(false)}
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }}
         />
       )}
+
+      {/* Mobile drawer */}
+      <aside style={{
+        position: 'fixed', top: 0, left: 0, height: '100%', width: 240,
+        background: '#1a1a2e', zIndex: 50,
+        transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.2s ease',
+      }} className="mobile-drawer">
+        <style>{`@media (min-width: 768px) { .mobile-drawer { display: none !important; } }`}</style>
+        <Sidebar mobile />
+      </aside>
+
+      {/* Main */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        {/* Top bar */}
+        <header style={{
+          background: '#fff', borderBottom: '1px solid #e5e7eb',
+          padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12,
+          position: 'sticky', top: 0, zIndex: 30, boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        }}>
+          <button
+            onClick={() => setMobileOpen(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#374151', padding: 4 }}
+            className="mobile-menu-btn"
+          >
+            <style>{`@media (min-width: 768px) { .mobile-menu-btn { display: none !important; } }`}</style>
+            <Menu size={22} />
+          </button>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 13, color: '#6b7280' }}>
+            Bienvenido, <strong style={{ color: '#1a1a2e' }}>{perfil?.nombre || user?.email}</strong>
+          </span>
+        </header>
+
+        <main style={{ flex: 1, overflowY: 'auto', padding: '20px 16px' }}>
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

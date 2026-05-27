@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Edit2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Edit2, ToggleLeft, ToggleRight, Wallet } from 'lucide-react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { Badge } from '../../components/ui/badge'
+import { ModalGestionBalance } from '../../components/modals/ModalGestionBalance'
 
 const clienteSchema = z.object({
   nombre: z.string().min(2, 'Nombre requerido'),
@@ -24,6 +25,9 @@ export const GestionClientes = () => {
   const [clientes, setClientes] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState(null)
+
+  const [balanceModalOpen, setBalanceModalOpen] = useState(false)
+  const [selectedClienteBalance, setSelectedClienteBalance] = useState(null)
 
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(clienteSchema)
@@ -101,6 +105,7 @@ export const GestionClientes = () => {
             <TableRow>
               <TableHead>Nombre</TableHead>
               <TableHead>Remitente</TableHead>
+              <TableHead className="text-right">Saldo a Favor</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -118,6 +123,10 @@ export const GestionClientes = () => {
                   </div>
                 </TableCell>
 
+                <TableCell className="text-right font-black text-orange-600">
+                  {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cliente.saldo || 0)}
+                </TableCell>
+
                 <TableCell>
                   <Badge className={cliente.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                     {cliente.activo ? 'Activo' : 'Inactivo'}
@@ -125,6 +134,15 @@ export const GestionClientes = () => {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => { setSelectedClienteBalance(cliente); setBalanceModalOpen(true) }}
+                      className="text-orange-500 hover:bg-orange-50"
+                      title="Gestionar Balance Contable"
+                    >
+                      <Wallet className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={() => handleEdit(cliente)}>
                       <Edit2 className="h-4 w-4" />
                     </Button>
@@ -176,6 +194,15 @@ export const GestionClientes = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      {selectedClienteBalance && (
+        <ModalGestionBalance 
+          open={balanceModalOpen}
+          onOpenChange={setBalanceModalOpen}
+          cliente={selectedClienteBalance}
+          onRefresh={fetchClientes}
+        />
+      )}
     </div>
   )
 }

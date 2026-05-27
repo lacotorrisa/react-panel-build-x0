@@ -10,28 +10,44 @@ import { Dashboard } from './pages/admin/Dashboard'
 import { CargarPedidos } from './pages/admin/CargarPedidos'
 import { PedidosEntregados } from './pages/admin/PedidosEntregados'
 import { PedidosRetraso } from './pages/admin/PedidosRetraso'
+import { PedidosPorStatus } from './pages/admin/PedidosPorStatus'
 import { GestionClientes } from './pages/admin/GestionClientes'
 import { GestionPaqueterias } from './pages/admin/GestionPaqueterias'
 import { GestionUsuarios } from './pages/admin/GestionUsuarios'
-import { MisPedidos } from './pages/paqueteria/MisPedidos'
+import { GestionRecepciones } from './pages/admin/GestionRecepciones'
+import { InventarioAdmin } from './pages/admin/InventarioAdmin'
+import { GestionEmpresasLogisticas } from './pages/admin/GestionEmpresasLogisticas'
+import { ReconciliacionStock } from './pages/admin/ReconciliacionStock'
+import { MisPedidos } from './pages/logistica/MisPedidos'
+import { RecepcionesPaqueteria } from './pages/logistica/RecepcionesPaqueteria'
+import { InventarioPaqueteria } from './pages/logistica/InventarioPaqueteria'
+import { MisPedidosCliente } from './pages/cliente/MisPedidosCliente'
+import { InventarioCliente } from './pages/cliente/InventarioCliente'
+import { BalanceCliente } from './pages/cliente/BalanceCliente'
 
 const RootRedirect = () => {
   const { user, rol, loading } = useAuth()
-  const [showSpinner, setShowSpinner] = React.useState(true)
+  if (loading) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', backgroundColor:'#F8F9FA' }}>
+        <div style={{ width: 32, height: 32, border: '4px solid #FF6600', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+      </div>
+    )
+  }
 
-  React.useEffect(() => {
-    // Si sigue en loading despues de 2 segundos, lo quitamos a la fuerza
-    const timer = setTimeout(() => setShowSpinner(false), 2000)
-    return () => clearTimeout(timer)
-  }, [])
-
-  // Eliminamos el spinner completamente para asegurar que pase directo a la validación
-  // Si no hay user, manda a login inmediatamente.
-
-  
   if (!user) return <Navigate to="/login" replace />
+
+  if (user && !rol) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', backgroundColor:'#F8F9FA' }}>
+        <div style={{ width: 32, height: 32, border: '4px solid #FF6600', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+      </div>
+    )
+  }
+
   if (rol === 'admin') return <Navigate to="/admin/dashboard" replace />
-  if (rol === 'paqueteria') return <Navigate to="/paqueteria/pedidos" replace />
+  if (rol === 'logistica') return <Navigate to="/logistica/pedidos" replace />
+  if (rol === 'cliente') return <Navigate to="/cliente/balance" replace />
   
   // Usuario autenticado pero sin rol asignado o rol no reconocido
   return (
@@ -61,16 +77,30 @@ export default function App() {
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><Layout /></ProtectedRoute>}>
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="pedidos" element={<CargarPedidos />} />
+          <Route path="pedidos/:status" element={<PedidosPorStatus />} />
           <Route path="entregados" element={<PedidosEntregados />} />
           <Route path="retrasos" element={<PedidosRetraso />} />
           <Route path="clientes" element={<GestionClientes />} />
           <Route path="paqueterias" element={<GestionPaqueterias />} />
           <Route path="usuarios" element={<GestionUsuarios />} />
+          <Route path="recepciones" element={<GestionRecepciones />} />
+          <Route path="inventario" element={<InventarioAdmin />} />
+          <Route path="empresas-logisticas" element={<GestionEmpresasLogisticas />} />
+          <Route path="reconciliacion" element={<ReconciliacionStock />} />
         </Route>
 
-        {/* Rutas Paquetería */}
-        <Route path="/paqueteria" element={<ProtectedRoute allowedRoles={['paqueteria']}><Layout /></ProtectedRoute>}>
+        {/* Rutas Empresa Logística */}
+        <Route path="/logistica" element={<ProtectedRoute allowedRoles={['logistica']}><Layout /></ProtectedRoute>}>
           <Route path="pedidos" element={<MisPedidos />} />
+          <Route path="recepciones" element={<RecepcionesPaqueteria />} />
+          <Route path="inventario" element={<InventarioPaqueteria />} />
+        </Route>
+
+        {/* Rutas Cliente */}
+        <Route path="/cliente" element={<ProtectedRoute allowedRoles={['cliente']}><Layout /></ProtectedRoute>}>
+          <Route path="pedidos" element={<MisPedidosCliente />} />
+          <Route path="inventario" element={<InventarioCliente />} />
+          <Route path="balance" element={<BalanceCliente />} />
         </Route>
 
         {/* Root Redirect */}

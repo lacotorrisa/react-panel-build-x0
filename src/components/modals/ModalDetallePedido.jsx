@@ -16,6 +16,8 @@ export const ModalDetallePedido = ({ open, onOpenChange, pedido }) => {
   const [eventos, setEventos] = useState([])
   const [observacion, setObservacion] = useState('')
   const [tipoEvento, setTipoEvento] = useState('nota')
+  const [archivo, setArchivo] = useState(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     if (open && pedido) {
@@ -44,20 +46,52 @@ export const ModalDetallePedido = ({ open, onOpenChange, pedido }) => {
       toast.error('Error de sesión. Por favor recarga la página.')
       return
     }
+
+    setIsUploading(true)
+    let archivoUrl = null
+
     try {
+      if (archivo) {
+        const fileExt = archivo.name.split('.').pop()
+        const fileName = `${pedido.id}_${Date.now()}.${fileExt}`
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('evidencias')
+          .upload(fileName, archivo)
+
+        if (uploadError) {
+          throw new Error('Error subiendo archivo: ' + uploadError.message)
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('evidencias')
+          .getPublicUrl(fileName)
+          
+        archivoUrl = publicUrlData.publicUrl
+      }
+
       const { error } = await supabase.from('pedido_eventos').insert({
         pedido_id: pedido.id,
         tipo: tipoEvento,
         descripcion: observacion.trim(),
-        usuario_id: user.id
+        usuario_id: user.id,
+        archivo_url: archivoUrl
       })
+
       if (error) throw error
+
       toast.success('Observación agregada')
       setObservacion('')
+      setArchivo(null)
+      if (document.getElementById('file-upload')) {
+        document.getElementById('file-upload').value = ''
+      }
       fetchEventos()
     } catch (error) {
       console.error('handleAddObservacion error:', error)
-      toast.error('Error al agregar observación: ' + error.message)
+      toast.error(error.message || 'Error al agregar observación')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -133,6 +167,17 @@ export const ModalDetallePedido = ({ open, onOpenChange, pedido }) => {
                         <div className="mt-0.5">{renderIcon(ev.tipo)}</div>
                         <div className="bg-white border rounded-md p-3 flex-1 shadow-sm">
                           <p className="text-sm text-gray-800">{ev.descripcion}</p>
+                          {ev.archivo_url && (
+                            <div className="mt-2">
+                              <a href={ev.archivo_url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline text-xs flex items-center gap-1">
+                                <Package className="w-3 h-3" />
+                                Ver archivo adjunto
+                              </a>
+                              {ev.archivo_url.match(/\.(jpeg|jpg|gif|png)$/i) && (
+                                <img src={ev.archivo_url} alt="Evidencia" className="mt-2 max-h-32 rounded-md border" />
+                              )}
+                            </div>
+                          )}
                           <div className="flex justify-between items-center mt-2 text-xs text-gray-500">
                             <span>{ev.profiles?.nombre || 'Sistema'} ({ev.profiles?.rol || 'system'})</span>
                             <span>{format(new Date(ev.created_at), 'dd/MM/yyyy HH:mm')}</span>
@@ -162,8 +207,21 @@ export const ModalDetallePedido = ({ open, onOpenChange, pedido }) => {
                     value={observacion}
                     onChange={(e) => setObservacion(e.target.value)}
                   />
-                  <Button className="w-full bg-[#FF6600] hover:bg-[#e65c00]" onClick={handleAddObservacion}>
-                    Agregar Observación
+                  <div>
+                    <Label htmlFor="file-upload" className="text-xs text-gray-500">Evidencia (Opcional)</Label>
+                    <input 
+                      id="file-upload"
+                      type="file" 
+                      onChange={(e) => setArchivo(e.target.files[0])}
+                      className="mt-1 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#FF6600]/10 file:text-[#FF6600] hover:file:bg-[#FF6600]/20"
+                    />
+                  </div>
+                  <Button 
+                    className="w-full bg-[#FF6600] hover:bg-[#e65c00]" 
+                    onClick={handleAddObservacion}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? 'Agregando...' : 'Agregar Observación'}
                   </Button>
                 </div>
               </div>

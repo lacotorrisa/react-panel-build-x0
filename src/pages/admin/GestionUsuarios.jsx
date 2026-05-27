@@ -16,7 +16,7 @@ export const GestionUsuarios = () => {
   const { user } = useAuth()
   const [usuarios, setUsuarios] = useState([])
   const [clientes, setClientes] = useState([])
-  const [paqueterias, setPaqueterias] = useState([])
+  const [empresasLogisticas, setEmpresasLogisticas] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null) // null = crear nuevo
   const [loading, setLoading] = useState(false)
@@ -26,7 +26,7 @@ export const GestionUsuarios = () => {
     email: '',
     password: '',
     nombre: '',
-    rol: 'paqueteria',
+    rol: 'logistica',
     entidad_id: ''
   })
 
@@ -37,8 +37,8 @@ export const GestionUsuarios = () => {
     const { data: cl } = await supabase.from('clientes').select('id, nombre').eq('activo', true)
     if (cl) setClientes(cl)
 
-    const { data: paq } = await supabase.from('paqueterias').select('id, nombre').eq('activo', true)
-    if (paq) setPaqueterias(paq)
+    const { data: log } = await supabase.from('empresas_logisticas').select('id, nombre').eq('activo', true)
+    if (log) setEmpresasLogisticas(log)
   }
 
   useEffect(() => { fetchData() }, [])
@@ -55,33 +55,34 @@ export const GestionUsuarios = () => {
       email: usuario.email || '',
       password: '',
       nombre: usuario.nombre || '',
-      rol: usuario.rol || 'paqueteria',
-      entidad_id: usuario.cliente_id || usuario.paqueteria_id || ''
+      rol: usuario.rol || 'logistica',
+      entidad_id: usuario.cliente_id || usuario.logistica_id || ''
     })
     setModalOpen(true)
   }
 
   const handleCreate = async () => {
-    if (!formData.email || !formData.password || !formData.nombre || !formData.rol) {
+    const emailLimpiado = formData.email?.trim() || '';
+    if (!emailLimpiado || !formData.password || !formData.nombre || !formData.rol) {
       return toast.error('Completa todos los campos requeridos')
     }
     setLoading(true)
     try {
-      const { data, error } = await supabase.functions.invoke('create-user', {
-        body: {
-          email: formData.email,
+      const res = await fetch(`${window.location.origin}/api/admin/create-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: emailLimpiado,
           password: formData.password,
           nombre: formData.nombre,
           rol: formData.rol,
-          cliente_id: formData.rol === 'cliente' ? formData.entidad_id : null,
-          paqueteria_id: formData.rol === 'paqueteria' ? formData.entidad_id : null,
-        }
+          cliente_id: formData.rol === 'cliente' ? (formData.entidad_id || null) : null,
+          logistica_id: formData.rol === 'logistica' ? (formData.entidad_id || null) : null,
+        })
       })
-
-      if (error) throw error
-      if (data?.error) throw new Error(data.error)
-
-      toast.success(`✅ Usuario ${formData.email} creado exitosamente`)
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Error al crear usuario')
+      toast.success(`✅ Usuario ${emailLimpiado} creado y listo para iniciar sesión`)
       setModalOpen(false)
       fetchData()
     } catch (err) {
@@ -98,14 +99,32 @@ export const GestionUsuarios = () => {
     }
     setLoading(true)
     try {
+      // 1. Actualizar datos de perfil básicos
       const { error } = await supabase.from('profiles').update({
         nombre: formData.nombre,
         rol: formData.rol,
-        cliente_id: formData.rol === 'cliente' ? formData.entidad_id : null,
-        paqueteria_id: formData.rol === 'paqueteria' ? formData.entidad_id : null,
+        cliente_id: formData.rol === 'cliente' ? (formData.entidad_id || null) : null,
+        logistica_id: formData.rol === 'logistica' ? (formData.entidad_id || null) : null,
       }).eq('id', editingUser.id)
 
       if (error) throw error
+
+      // 2. Si el administrador escribió una nueva contraseña, la actualizamos usando la API
+      if (formData.password && formData.password.length >= 6) {
+        const origin = window.location.origin;
+        const res = await fetch(`${origin}/api/admin/update-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: editingUser.id, newPassword: formData.password })
+        });
+        
+        const apiData = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(apiData.error || 'Error al actualizar la contraseña (asegúrate de haber configurado SUPABASE_SERVICE_ROLE_KEY en Vercel)');
+        }
+      }
+
       toast.success('Usuario actualizado')
       setModalOpen(false)
       fetchData()
@@ -173,12 +192,14 @@ export const GestionUsuarios = () => {
                 <TableCell className="font-medium">{u.nombre}</TableCell>
                 <TableCell className="text-sm text-gray-600">{u.email}</TableCell>
                 <TableCell>
-                  <Badge className={rolColors[u.rol] || 'bg-gray-100'} variant="secondary">{u.rol}</Badge>
+                  <Badge className={rolColors[u.rol] || 'bg-gray-100'} variant="secondary">
+                    {u.rol === 'logistica' ? 'Empresa Logística' : u.rol}
+                  </Badge>
                 </TableCell>
                 <TableCell className="text-sm">
                   {u.rol === 'admin' ? 'Colivery Admin' :
                    u.rol === 'cliente' ? (clientes.find(c => c.id === u.cliente_id)?.nombre || '—') :
-                   (paqueterias.find(p => p.id === u.paqueteria_id)?.nombre || '—')}
+                   (empresasLogisticas.find(p => p.id === u.logistica_id)?.nombre || '—')}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button variant="ghost" size="sm" onClick={() => openEdit(u)}>✏️ Editar</Button>
@@ -200,7 +221,7 @@ export const GestionUsuarios = () => {
               <Label>Nombre Completo *</Label>
               <Input value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} placeholder="Ej: Solin Logistics" />
             </div>
-            {!editingUser && (
+            {!editingUser ? (
               <>
                 <div>
                   <Label>Correo Electrónico *</Label>
@@ -211,6 +232,11 @@ export const GestionUsuarios = () => {
                   <Input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Mínimo 6 caracteres" />
                 </div>
               </>
+            ) : (
+              <div>
+                <Label>Nueva Contraseña (Opcional)</Label>
+                <Input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Dejar en blanco para no cambiarla" />
+              </div>
             )}
             <div>
               <Label>Rol *</Label>
@@ -218,7 +244,7 @@ export const GestionUsuarios = () => {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="paqueteria">Paquetería</SelectItem>
+                  <SelectItem value="logistica">Empresa Logística</SelectItem>
                   <SelectItem value="cliente">Cliente</SelectItem>
                 </SelectContent>
               </Select>
@@ -234,13 +260,13 @@ export const GestionUsuarios = () => {
                 </Select>
               </div>
             )}
-            {formData.rol === 'paqueteria' && (
+            {formData.rol === 'logistica' && (
               <div>
-                <Label>Empresa Paquetería</Label>
+                <Label>Empresa Logística</Label>
                 <Select value={formData.entidad_id} onValueChange={val => setFormData({...formData, entidad_id: val})}>
-                  <SelectTrigger><SelectValue placeholder="Seleccione paquetería" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleccione empresa" /></SelectTrigger>
                   <SelectContent>
-                    {paqueterias.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}
+                    {empresasLogisticas.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

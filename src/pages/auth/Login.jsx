@@ -30,6 +30,12 @@ export const Login = () => {
     if (user && rol) {
       if (rol === 'admin') navigate('/admin/dashboard', { replace: true })
       else if (rol === 'paqueteria') navigate('/paqueteria/pedidos', { replace: true })
+      else if (rol === 'logistica') navigate('/logistica/pedidos', { replace: true })
+      else if (rol === 'cliente') navigate('/cliente/balance', { replace: true })
+      else {
+        toast.error('Acceso denegado', { description: 'Tu cuenta no tiene un rol válido asignado.' })
+        setLoading(false)
+      }
     }
   }, [user, rol, navigate])
 

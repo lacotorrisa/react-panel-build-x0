@@ -15,15 +15,12 @@ export const PedidosRetraso = () => {
 
   const fetchPedidos = async () => {
     if (!clienteSeleccionado) return
-    const ayer = new Date()
-    ayer.setDate(ayer.getDate() - 1)
 
     const { data } = await supabase
       .from('pedidos')
       .select('*')
       .eq('cliente_id', clienteSeleccionado.id)
-      .eq('status', 'pendiente')
-      .lt('fecha_pedido', ayer.toISOString())
+      .neq('status', 'entregado')
       .order('fecha_pedido', { ascending: true })
     
     if (data) setPedidos(data)

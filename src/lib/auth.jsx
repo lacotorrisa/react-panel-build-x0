@@ -3,6 +3,14 @@ import { supabase } from './supabase'
 
 export const AuthContext = createContext({})
 
+// Determina el rol por email sin necesitar la base de datos
+const getRolByEmail = (email) => {
+  if (!email) return 'cliente'
+  if (email === 'admin@colivery.mx' || email === 'irigoyen@colivery.mx') return 'admin'
+  if (email === 'solin@colivery.mx') return 'paqueteria'
+  return 'cliente'
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [perfil, setPerfil] = useState(null)
@@ -10,68 +18,43 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   const loadProfile = async (sessionUser) => {
-    try {
-      // 1. Intentar cargar el perfil existente
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', sessionUser.id)
-        .single()
+    // Aplicar rol inmediato por email como fallback (no bloquea el render)
+    const rolInmediato = getRolByEmail(sessionUser.email)
+    setRol(rolInmediato)
+    setPerfil({ id: sessionUser.id, email: sessionUser.email, rol: rolInmediato })
 
+    // Intentar cargar el perfil real de la BD en background (sin bloquear)
+    try {
+      const { data } = await Promise.race([
+        supabase.from('profiles').select('*').eq('id', sessionUser.id).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
+      ])
       if (data) {
         setPerfil(data)
         setRol(data.rol)
-        return
       }
-
-      // 2. Si no existe perfil, lo autogeneramos basado en el email
-      const email = sessionUser.email
-      let rolAsignado = 'cliente'
-      let nombreAsignado = email.split('@')[0]
-
-      if (email === 'admin@colivery.mx') {
-        rolAsignado = 'admin'
-        nombreAsignado = 'Administrador Maestro'
-      } else if (email === 'solin@colivery.mx') {
-        rolAsignado = 'paqueteria'
-        nombreAsignado = 'Solin Logistics'
-      }
-
-      const { data: newProfile, error: insertError } = await supabase
-        .from('profiles')
-        .insert({ id: sessionUser.id, email, nombre: nombreAsignado, rol: rolAsignado })
-        .select()
-        .single()
-
-      if (newProfile && !insertError) {
-        setPerfil(newProfile)
-        setRol(newProfile.rol)
-      } else {
-        // Fallback en memoria si el insert falla por RLS
-        setPerfil({ id: sessionUser.id, email, rol: rolAsignado, nombre: nombreAsignado })
-        setRol(rolAsignado)
-      }
-    } catch (err) {
-      console.error('Error loading profile:', err)
-      // Fallback seguro en memoria
-      if (sessionUser.email === 'admin@colivery.mx') setRol('admin')
-      else if (sessionUser.email === 'solin@colivery.mx') setRol('paqueteria')
-      else setRol('cliente')
+    } catch {
+      // Si falla o timeout, ya tenemos el rol por email aplicado arriba
+      console.warn('profiles no respondió a tiempo, usando rol por email')
     }
   }
 
   useEffect(() => {
-    let isMounted = true;
+    let isMounted = true
 
     const initializeAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session } } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ])
+
         if (session?.user && isMounted) {
           setUser(session.user)
           await loadProfile(session.user)
         }
-      } catch (error) {
-        console.error("Error inicializando sesión:", error)
+      } catch (err) {
+        console.warn('Error al inicializar auth:', err.message)
       } finally {
         if (isMounted) setLoading(false)
       }
@@ -79,18 +62,29 @@ export function AuthProvider({ children }) {
 
     initializeAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!isMounted) return;
-      
-      if (session?.user) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return
+
+      if (event === 'SIGNED_IN') {
+        // Login activo: mostrar spinner brevemente y cargar perfil
+        setLoading(true)
         setUser(session.user)
         await loadProfile(session.user)
-      } else {
+        if (isMounted) setLoading(false)
+
+      } else if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        // Refresh de token: NO bloquear con loading, solo actualizar en background
+        if (session?.user && isMounted) {
+          setUser(session.user)
+          loadProfile(session.user) // sin await, no bloquea
+        }
+
+      } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setPerfil(null)
         setRol(null)
+        if (isMounted) setLoading(false)
       }
-      setLoading(false)
     })
 
     return () => {
@@ -100,15 +94,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      throw new Error(error.message)
-    }
-    
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw new Error(error.message)
     return data
   }
 
@@ -127,3 +114,4 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext)
 }
+
