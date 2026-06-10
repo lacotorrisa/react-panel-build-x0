@@ -18,7 +18,11 @@ import {
   CheckSquare,
   Warehouse,
   Building2,
-  Scale
+  Scale,
+  Wallet,
+  SendHorizontal,
+  DollarSign,
+  BarChart2
 } from 'lucide-react'
 
 export const Layout = () => {
@@ -32,25 +36,49 @@ export const Layout = () => {
     { name: 'Cargar Pedidos', path: '/admin/pedidos',     icon: Package },
     { name: 'Entregados',     path: '/admin/entregados',  icon: History },
     { name: 'Con Retraso',    path: '/admin/retrasos',    icon: AlertCircle },
-    { name: 'Recepciones',    path: '/admin/recepciones', icon: ClipboardList },
     { name: 'Inventario',     path: '/admin/inventario',  icon: Warehouse },
     { name: 'Empresas Log.',  path: '/admin/empresas-logisticas', icon: Building2 },
-    { name: 'Reconciliación', path: '/admin/reconciliacion',      icon: Scale },
     { name: 'Clientes',       path: '/admin/clientes',    icon: Users },
+    {
+      name: 'La Cotorrisa',
+      path: '/admin/lacotorrisa/balance',
+      icon: Scale,
+      subLinks: [
+        { name: 'Mi Balance',              path: '/admin/lacotorrisa/balance',        icon: Scale },
+        { name: 'Mi Cartera',              path: '/admin/lacotorrisa/cartera',        icon: Wallet },
+        { name: 'Cobro y Cierres de Caja', path: '/admin/lacotorrisa/caja',           icon: BarChart2 },
+        { name: 'Trazabilidad',            path: '/admin/lacotorrisa/trazabilidad',   icon: BarChart2 },
+        { name: 'Trazabilidad (10%)',      path: '/admin/lacotorrisa/trazabilidad10', icon: BarChart2 },
+      ]
+    },
+    { name: 'Finanzas',       path: '/admin/finanzas',    icon: DollarSign },
+    { name: 'Trazabilidad',   path: '/admin/trazabilidad',icon: BarChart2 },
+    { name: 'Trazabilidad (10%)', path: '/admin/trazabilidad10', icon: BarChart2 },
     { name: 'Paqueterías',    path: '/admin/paqueterias', icon: Truck },
     { name: 'Usuarios',       path: '/admin/usuarios',    icon: Settings },
   ]
 
   const logisticaLinks = [
     { name: 'Mis Pedidos',    path: '/logistica/pedidos',     icon: Package },
-    { name: 'Recepciones',    path: '/logistica/recepciones', icon: CheckSquare },
     { name: 'Inventario',     path: '/logistica/inventario',  icon: Warehouse },
   ]
 
   const clienteLinks = [
-    { name: 'Mi Balance',     path: '/cliente/balance',    icon: Scale },
-    { name: 'Mis Pedidos',    path: '/cliente/pedidos',    icon: Package },
-    { name: 'Mi Inventario',  path: '/cliente/inventario', icon: Warehouse },
+    { name: 'Mi Balance',      path: '/cliente/balance',    icon: Scale },
+    { name: 'Mi Cartera',      path: '/cliente/cartera',    icon: Wallet },
+    { name: 'Retiro de Saldo', path: '/cliente/retiro',     icon: SendHorizontal },
+    { name: 'Mis Pedidos',     path: '/cliente/pedidos',    icon: Package },
+    { name: 'Mi Inventario',   path: '/cliente/inventario', icon: Warehouse },
+    { name: 'Trazabilidad',    path: '/cliente/trazabilidad',icon: BarChart2 },
+    {
+      name: '10% Comisión Colivery',
+      path: '/cliente/trazabilidad10',
+      icon: Scale,
+      subLinks: [
+        { name: 'Mi Cartera', path: '/cliente/cartera10', icon: Wallet },
+        { name: 'Trazabilidad', path: '/cliente/trazabilidad10', icon: BarChart2 }
+      ]
+    }
   ]
 
   const links = rol === 'admin' ? adminLinks : rol === 'cliente' ? clienteLinks : logisticaLinks
@@ -93,45 +121,136 @@ export const Layout = () => {
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-          {links.map(({ name, path, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              onClick={() => mobile && setMobileOpen(false)}
-              title={isCollapsed ? name : ''}
-              style={({ isActive }) => ({
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: isCollapsed ? 0 : 10,
-                justifyContent: isCollapsed ? 'center' : 'flex-start',
-                padding: isCollapsed ? '10px 0' : '10px 14px',
-                borderRadius: 8,
-                marginBottom: 2,
-                textDecoration: 'none',
-                fontSize: 14,
-                fontWeight: 500,
-                color: isActive ? '#ffffff' : '#9ca3af',
-                background: isActive ? '#FF6600' : 'transparent',
-                transition: 'background 0.15s, color 0.15s',
-              })}
-              onMouseEnter={e => {
-                if (!e.currentTarget.style.background.includes('FF6600')) {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
-                  e.currentTarget.style.color = '#ffffff'
-                }
-              }}
-              onMouseLeave={e => {
-                if (!e.currentTarget.style.background.includes('FF6600')) {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.color = '#9ca3af'
-                }
-              }}
-            >
-              <Icon size={18} style={{ flexShrink: 0 }} />
-              {!isCollapsed && <span style={{ whiteSpace: 'nowrap' }}>{name}</span>}
-            </NavLink>
-          ))}
+          {links.map((link) => {
+            if (link.subLinks) {
+              const Icon = link.icon;
+              return (
+                <div key={link.name} style={{ display: 'flex', flexDirection: 'column' }}>
+                  <NavLink
+                    to={link.path || link.subLinks[0].path}
+                    onClick={() => mobile && setMobileOpen(false)}
+                    title={isCollapsed ? link.name : ''}
+                    style={({ isActive }) => {
+                      const isSubActive = link.subLinks.some(sub => window.location.pathname.startsWith(sub.path)) || isActive;
+                      return {
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: isCollapsed ? 0 : 10,
+                        justifyContent: isCollapsed ? 'center' : 'flex-start',
+                        padding: isCollapsed ? '10px 0' : '10px 14px',
+                        borderRadius: 8,
+                        marginBottom: 2,
+                        textDecoration: 'none',
+                        fontSize: 14,
+                        fontWeight: 500,
+                        color: isSubActive ? '#ffffff' : '#9ca3af',
+                        background: isSubActive ? '#FF6600' : 'transparent',
+                        transition: 'background 0.15s, color 0.15s',
+                      };
+                    }}
+                    onMouseEnter={e => {
+                      if (!e.currentTarget.style.background.includes('FF6600')) {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
+                        e.currentTarget.style.color = '#ffffff'
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (!e.currentTarget.style.background.includes('FF6600')) {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = '#9ca3af'
+                      }
+                    }}
+                  >
+                    <Icon size={18} style={{ flexShrink: 0 }} />
+                    {!isCollapsed && <span style={{ whiteSpace: 'nowrap' }}>{link.name}</span>}
+                  </NavLink>
+                  {!isCollapsed && (
+                    <div style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2, marginBottom: 4 }}>
+                      {link.subLinks.map((sub) => (
+                        <NavLink
+                          key={sub.path}
+                          to={sub.path}
+                          onClick={() => mobile && setMobileOpen(false)}
+                          style={({ isActive }) => ({
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '6px 12px',
+                            borderRadius: 6,
+                            textDecoration: 'none',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            color: isActive ? '#ffffff' : '#a3a3a3',
+                            background: isActive ? 'rgba(255,102,0,0.15)' : 'transparent',
+                            borderLeft: isActive ? '2px solid #FF6600' : '2px solid transparent',
+                            paddingLeft: isActive ? '10px' : '12px',
+                            transition: 'background 0.15s, color 0.15s, border-left-color 0.15s',
+                          })}
+                          onMouseEnter={e => {
+                            if (!e.currentTarget.style.background.includes('rgba(255,102,0,0.15)')) {
+                              e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                              e.currentTarget.style.color = '#ffffff'
+                            }
+                          }}
+                          onMouseLeave={e => {
+                            if (!e.currentTarget.style.background.includes('rgba(255,102,0,0.15)')) {
+                              e.currentTarget.style.background = 'transparent'
+                              e.currentTarget.style.color = '#a3a3a3'
+                            }
+                          }}
+                        >
+                          <sub.icon size={13} style={{ flexShrink: 0 }} />
+                          <span style={{ whiteSpace: 'nowrap' }}>{sub.name}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            const Icon = link.icon;
+            return (
+              <NavLink
+                key={link.path}
+                to={link.path}
+                onClick={() => mobile && setMobileOpen(false)}
+                title={isCollapsed ? link.name : ''}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: isCollapsed ? 0 : 10,
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  padding: isCollapsed ? '10px 0' : '10px 14px',
+                  borderRadius: 8,
+                  marginBottom: 2,
+                  textDecoration: 'none',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: isActive ? '#ffffff' : '#9ca3af',
+                  background: isActive ? '#FF6600' : 'transparent',
+                  transition: 'background 0.15s, color 0.15s',
+                })}
+                onMouseEnter={e => {
+                  if (!e.currentTarget.style.background.includes('FF6600')) {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
+                    e.currentTarget.style.color = '#ffffff'
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!e.currentTarget.style.background.includes('FF6600')) {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.color = '#9ca3af'
+                  }
+                }}
+              >
+                <Icon size={18} style={{ flexShrink: 0 }} />
+                {!isCollapsed && <span style={{ whiteSpace: 'nowrap' }}>{link.name}</span>}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Footer user */}

@@ -1,13 +1,25 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-let supabaseInstance;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error(
+    '[Colivery] Faltan variables de entorno VITE_SUPABASE_URL y/o VITE_SUPABASE_ANON_KEY.\n' +
+    'Crea un archivo .env en la raíz del proyecto con esos valores.'
+  )
+}
 
-if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'tu_url_de_supabase') {
-  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey)
-} else {
+export const supabase = createClient(
+  SUPABASE_URL     || '',
+  SUPABASE_ANON_KEY || ''
+)
+
+
+// Bloque eliminado: Mock de Supabase en memoria
+// El mock causaba que todos los logins fallaran en producción
+// porque no tenía los usuarios reales de la base de datos.
+if (false) {
   console.warn("USANDO MOCK DE SUPABASE EN MEMORIA PORQUE NO HAY .ENV")
 
   let mockDb = {
@@ -140,5 +152,3 @@ if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'tu_url_de_supabase') {
     })
   }
 }
-
-export const supabase = supabaseInstance

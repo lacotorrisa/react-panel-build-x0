@@ -24,10 +24,15 @@ SET rol = 'admin',
     logistica_id = null
 WHERE email = 'admin@colivery.mx' OR email = 'irigoyen@colivery.mx';
 
--- 1.2 Asegurar que exista el cliente "La Cotorrisa" en la tabla clientes
-INSERT INTO clientes (nombre, activo)
-SELECT 'La Cotorrisa', true
-WHERE NOT EXISTS (SELECT 1 FROM clientes WHERE nombre = 'La Cotorrisa');
+-- 1.2 Asegurar que exista el cliente "La Cotorrisa" de forma idempotente
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM clientes WHERE nombre = 'La Cotorrisa') THEN
+    UPDATE clientes SET activo = true WHERE nombre = 'La Cotorrisa';
+  ELSE
+    INSERT INTO clientes (nombre, activo) VALUES ('La Cotorrisa', true);
+  END IF;
+END $$;
 
 -- 1.3 Vincular al usuario 'lacotorrisa@colivery.mx' en la tabla profiles con el rol 'cliente'
 INSERT INTO profiles (id, email, nombre, rol, cliente_id)
@@ -49,9 +54,10 @@ ON CONFLICT (id) DO UPDATE SET
 -- 2. TABLAS DE BALANCE Y PAYOUTS (Si no existen)
 -- ============================================================
 
--- 2.1 Agregar columnas de saldo a clientes
+-- 2.1 Agregar columnas de saldo a clientes y cortes
 alter table clientes add column if not exists saldo numeric(12,2) default 0.00;
 alter table clientes add column if not exists balance_inicial numeric(12,2) default 0.00;
+alter table cliente_cortes_balance add column if not exists unidades_vendidas integer default 0;
 
 -- 2.2 Crear tabla de cortes de balance
 create table if not exists cliente_cortes_balance (
@@ -66,6 +72,7 @@ create table if not exists cliente_cortes_balance (
   costo_administracion numeric(12,2) not null default 0.00 check (costo_administracion >= 0),
   costo_software numeric(12,2) not null default 0.00 check (costo_software >= 0),
   gastos_adicionales numeric(12,2) not null default 0.00 check (gastos_adicionales >= 0),
+  unidades_vendidas integer not null default 0 check (unidades_vendidas >= 0),
   neto_favor numeric(12,2) not null default 0.00,
   referencia text,
   observaciones text,
@@ -292,6 +299,7 @@ INSERT INTO cliente_cortes_balance (
   costo_administracion, 
   costo_software, 
   gastos_adicionales, 
+  unidades_vendidas, 
   neto_favor, 
   referencia, 
   observaciones
@@ -300,16 +308,17 @@ SELECT
   (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1),
   '2026-04-01',
   '2026-04-30',
-  139208.00,                 -- lacotorrisa.shop
-  190696.00,                 -- lacotorrisamerch.com.mx
-  38139.20,                  -- 20% plataforma merch
-  5498.72,                   -- pasarela de pago shop
-  22273.28,                  -- plataforma (guías, almacenaje, etc.) shop
-  0.00,
-  22061.41,                  -- gastos adicionales (merch $12,969.00 + shop $9,092.41)
-  241931.39,                 -- neto consolidado a favor
+  190696.00,                 -- Tienda General (.com.mx)
+  139208.00,                 -- Tienda Exclusivos (.shop)
+  38139.20,                  -- Comisión de plataforma General (20% Colivery)
+  5498.72,                   -- Pasarela de pago Exclusivos (.shop)
+  22273.28,                  -- Costos de administración Exclusivos (.shop)
+  9092.41,                   -- Costos de envío Exclusivos (.shop)
+  12969.00,                  -- Costos de envío / deducciones General (.com.mx)
+  259,                       -- Unidades vendidas (Prendas totales)
+  241931.39,                 -- Neto consolidado a favor
   'Reporte Ejecutivo Abril 2026',
-  'Carga inicial consolidada de Abril 2026 desde el Reporte Ejecutivo oficial (lacotorrisamerch.com.mx y lacotorrisa.shop).'
+  'Carga inicial detallada de Abril 2026 desde el Reporte Ejecutivo oficial con plataformas separadas (lacotorrisamerch.com.mx y lacotorrisa.shop).'
 WHERE NOT EXISTS (
   SELECT 1 FROM cliente_cortes_balance 
   WHERE cliente_id = (SELECT id FROM clientes WHERE nombre = 'La Cotorrisa' LIMIT 1)

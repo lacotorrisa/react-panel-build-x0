@@ -12,6 +12,14 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     open: true,
+    proxy: {
+      // Reenvía /api al servidor Express local (puerto 3001)
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   resolve: {
     alias: {

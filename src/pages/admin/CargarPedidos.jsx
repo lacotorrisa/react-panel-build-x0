@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Upload, Plus } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Upload, Plus, Zap } from 'lucide-react'
 import useAppStore from '../../store/useAppStore'
 import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
@@ -11,6 +11,7 @@ import { TablaPedidos } from '../../components/tables/TablaPedidos'
 import { ModalImportarCSV } from '../../components/modals/ModalImportarCSV'
 import { ModalDetallePedido } from '../../components/modals/ModalDetallePedido'
 import * as Dialog from '@radix-ui/react-dialog'
+import { useMongoPolling } from '../../hooks/useMongoPolling'
 
 const STATUS_OPTIONS = [
   { value: 'pendiente', label: '⏳ Pendiente' },
@@ -29,6 +30,34 @@ const BLANK = {
   producto: '', talla: '', cantidad: 1,
 }
 
+const generateMonthsOptions = () => {
+  const options = [{ value: 'todos', label: '📅 Todos los meses' }]
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() // 0-indexed (0 = Ene, 11 = Dic)
+
+  let year = currentYear
+  let month = currentMonth
+
+  while (true) {
+    // Detenerse si retrocedemos antes de Diciembre 2025 (año 2025, mes 11)
+    if (year < 2025 || (year === 2025 && month < 11)) {
+      break
+    }
+    const value = `${year}-${String(month + 1).padStart(2, '0')}`
+    const d = new Date(year, month, 1)
+    const label = d.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' })
+    options.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) })
+
+    month--
+    if (month < 0) {
+      month = 11
+      year--
+    }
+  }
+  return options
+}
+
 export const CargarPedidos = () => {
   const { clienteSeleccionado, setClienteSeleccionado } = useAppStore()
   const [pedidos, setPedidos] = useState([])
@@ -40,15 +69,100 @@ export const CargarPedidos = () => {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(BLANK)
 
+  // Estados de paginación, búsqueda y mes
+  const [currentPage, setCurrentPage] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const [selectedMonth, setSelectedMonth] = useState('todos')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const pageSize = 50
+
+  // ── MONGO TIEMPO REAL ──────────────────────────────────────
+  const handleNuevosPedidosMongo = useCallback(() => {
+    fetchPedidos()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteSeleccionado, currentPage, selectedMonth, debouncedSearch])
+
+  // También refrescar cuando hay una actualización (guía, status) en cualquier pedido
+  const handleActualizado = useCallback(() => {
+    fetchPedidos()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteSeleccionado, currentPage, selectedMonth, debouncedSearch])
+
+  const esLaCotorrisa = clienteSeleccionado?.nombre?.toLowerCase().includes('cotorrisa')
+  const { checkAhora } = useMongoPolling({
+    onNuevosPedidos: handleNuevosPedidosMongo,
+    onActualizado:   handleActualizado,
+    activo:          esLaCotorrisa,
+    clienteId:       clienteSeleccionado?.id || null,
+  })
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+      setCurrentPage(0)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [clienteSeleccionado, selectedMonth])
+
   const fetchPedidos = async () => {
     if (!clienteSeleccionado) return
-    const { data } = await supabase
+    
+    const from = currentPage * pageSize
+    const to = from + pageSize - 1
+
+    let query = supabase
       .from('pedidos')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('cliente_id', clienteSeleccionado.id)
+
+    // Filtro por mes
+    if (selectedMonth !== 'todos') {
+      const [year, month] = selectedMonth.split('-')
+      const startDate = `${year}-${month}-01`
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
+      const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`
+      query = query.gte('fecha_pedido', startDate).lte('fecha_pedido', endDate)
+    }
+
+    // Filtro por búsqueda (incluye número de pedido en observaciones)
+    if (debouncedSearch.trim()) {
+      const s = `%${debouncedSearch.trim()}%`
+      query = query.or(
+        `nombre_comprador.ilike.${s},guia.ilike.${s},status.ilike.${s},correo_comprador.ilike.${s},observaciones.ilike.${s}`
+      )
+    }
+
+    query = query
       .order('fecha_pedido', { ascending: false })
       .order('created_at', { ascending: false })
-    if (data) setPedidos(data)
+      .range(from, to)
+
+    const { data, count, error } = await query
+    
+    if (error) {
+      toast.error('Error cargando pedidos: ' + error.message)
+    } else {
+      // Ordenar por FechaISO (fecha+hora real de MongoDB) si está disponible
+      const sorted = (data || []).slice().sort((a, b) => {
+        const getISO = (p) => {
+          const m = (p.observaciones || '').match(/\[FechaISO:\s*([^\]]+)\]/)
+          if (m) return new Date(m[1].trim())
+          // Fallback: fecha_pedido + hora del tag [Hora: HH:MM]
+          const h = (p.observaciones || '').match(/\[Hora:\s*(\d{2}:\d{2})\]/)
+          const fecha = p.fecha_pedido || '2000-01-01'
+          const hora  = h ? h[1] : '00:00'
+          return new Date(`${fecha}T${hora}:00`)
+        }
+        return getISO(b) - getISO(a) // DESC: más reciente primero
+      })
+      setPedidos(sorted)
+      setTotalCount(count || 0)
+    }
   }
 
   const fetchPaqueterias = async () => {
@@ -62,7 +176,10 @@ export const CargarPedidos = () => {
   }
 
   useEffect(() => { fetchClientes(); fetchPaqueterias() }, [])
-  useEffect(() => { if (clienteSeleccionado) fetchPedidos() }, [clienteSeleccionado])
+  useEffect(() => {
+    if (clienteSeleccionado) fetchPedidos()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteSeleccionado, currentPage, selectedMonth, debouncedSearch])
 
   const handleGuardarNuevo = async () => {
     if (!form.nombre_comprador.trim()) return toast.error('El nombre del comprador es requerido')
@@ -120,6 +237,26 @@ export const CargarPedidos = () => {
     </div>
   )
 
+  const SelectorMes = () => {
+    const options = generateMonthsOptions()
+    return (
+      <div className="w-full sm:w-56">
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger>
+            <SelectValue placeholder="Filtrar por Mes" />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map(o => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    )
+  }
+
   if (!clienteSeleccionado) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 text-center">
@@ -131,12 +268,66 @@ export const CargarPedidos = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
+
+      {/* ── BANNER TIEMPO REAL MONGO ──────────────────────── */}
+      {esLaCotorrisa && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '8px 14px',
+          borderRadius: 10,
+          background: 'linear-gradient(135deg, rgba(34,197,94,0.08), rgba(16,185,129,0.06))',
+          border: '1px solid rgba(34,197,94,0.25)',
+          fontSize: 13,
+          color: '#15803d',
+          fontWeight: 500,
+        }}>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#22c55e',
+            boxShadow: '0 0 0 3px rgba(34,197,94,0.2)',
+            animation: 'mongo-pulse 2s ease infinite',
+          }} />
+          <style>{`
+            @keyframes mongo-pulse {
+              0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
+              50% { box-shadow: 0 0 0 6px rgba(34,197,94,0.05); }
+            }
+          `}</style>
+          <Zap size={14} style={{ color: '#16a34a' }} />
+          <span>Sincronización en tiempo real activa — los pedidos de La Cotorrisa desde MongoDB se importan automáticamente</span>
+          <button
+            onClick={checkAhora}
+            style={{
+              marginLeft: 'auto',
+              background: 'rgba(34,197,94,0.12)',
+              border: '1px solid rgba(34,197,94,0.3)',
+              borderRadius: 6,
+              padding: '3px 10px',
+              fontSize: 12,
+              color: '#15803d',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            ↻ Sincronizar ahora
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
           <h2 className="text-2xl font-bold tracking-tight">Cargar Pedidos</h2>
           <SelectorCliente />
+          <SelectorMes />
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 self-end md:self-auto">
           <Button
             className="bg-orange-500 hover:bg-orange-600 text-white"
             onClick={() => { setForm(BLANK); setModalNuevoOpen(true) }}
@@ -154,6 +345,13 @@ export const CargarPedidos = () => {
         paqueterias={paqueterias}
         onRefresh={fetchPedidos}
         onViewDetails={setSelectedPedido}
+        serverSidePagination={true}
+        currentPage={currentPage}
+        totalCount={totalCount}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onSearchChange={setSearchQuery}
+        searchQuery={searchQuery}
       />
 
       <ModalImportarCSV

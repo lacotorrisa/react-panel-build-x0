@@ -14,9 +14,11 @@ import { PedidosPorStatus } from './pages/admin/PedidosPorStatus'
 import { GestionClientes } from './pages/admin/GestionClientes'
 import { GestionPaqueterias } from './pages/admin/GestionPaqueterias'
 import { GestionUsuarios } from './pages/admin/GestionUsuarios'
-import { GestionRecepciones } from './pages/admin/GestionRecepciones'
 import { InventarioAdmin } from './pages/admin/InventarioAdmin'
 import { GestionEmpresasLogisticas } from './pages/admin/GestionEmpresasLogisticas'
+import { FinanzasAdmin } from './pages/admin/FinanzasAdmin'
+import { TrazabilidadGuias } from './pages/admin/TrazabilidadGuias'
+import { GestionRecepciones } from './pages/admin/GestionRecepciones'
 import { ReconciliacionStock } from './pages/admin/ReconciliacionStock'
 import { MisPedidos } from './pages/logistica/MisPedidos'
 import { RecepcionesPaqueteria } from './pages/logistica/RecepcionesPaqueteria'
@@ -24,6 +26,10 @@ import { InventarioPaqueteria } from './pages/logistica/InventarioPaqueteria'
 import { MisPedidosCliente } from './pages/cliente/MisPedidosCliente'
 import { InventarioCliente } from './pages/cliente/InventarioCliente'
 import { BalanceCliente } from './pages/cliente/BalanceCliente'
+import { MiCartera } from './pages/cliente/MiCartera'
+import { RetiroSaldo } from './pages/cliente/RetiroSaldo'
+import { TrazabilidadCliente } from './pages/cliente/TrazabilidadCliente'
+import { CierreCaja } from './pages/admin/CierreCaja'
 
 const RootRedirect = () => {
   const { user, rol, loading } = useAuth()
@@ -83,16 +89,21 @@ export default function App() {
           <Route path="clientes" element={<GestionClientes />} />
           <Route path="paqueterias" element={<GestionPaqueterias />} />
           <Route path="usuarios" element={<GestionUsuarios />} />
-          <Route path="recepciones" element={<GestionRecepciones />} />
           <Route path="inventario" element={<InventarioAdmin />} />
           <Route path="empresas-logisticas" element={<GestionEmpresasLogisticas />} />
-          <Route path="reconciliacion" element={<ReconciliacionStock />} />
+          <Route path="lacotorrisa/balance" element={<BalanceCliente clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" />} />
+          <Route path="lacotorrisa/cartera" element={<MiCartera clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" />} />
+          <Route path="lacotorrisa/trazabilidad" element={<TrazabilidadCliente clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" />} />
+          <Route path="lacotorrisa/trazabilidad10" element={<TrazabilidadCliente clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" mode="10" />} />
+          <Route path="lacotorrisa/caja" element={<CierreCaja clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" />} />
+          <Route path="finanzas" element={<FinanzasAdmin />} />
+          <Route path="trazabilidad" element={<TrazabilidadGuias />} />
+          <Route path="trazabilidad10" element={<TrazabilidadGuias mode="10" />} />
         </Route>
 
         {/* Rutas Empresa Logística */}
         <Route path="/logistica" element={<ProtectedRoute allowedRoles={['logistica']}><Layout /></ProtectedRoute>}>
           <Route path="pedidos" element={<MisPedidos />} />
-          <Route path="recepciones" element={<RecepcionesPaqueteria />} />
           <Route path="inventario" element={<InventarioPaqueteria />} />
         </Route>
 
@@ -101,6 +112,11 @@ export default function App() {
           <Route path="pedidos" element={<MisPedidosCliente />} />
           <Route path="inventario" element={<InventarioCliente />} />
           <Route path="balance" element={<BalanceCliente />} />
+          <Route path="cartera" element={<MiCartera />} />
+          <Route path="cartera10" element={<MiCartera mode="10" />} />
+          <Route path="retiro" element={<RetiroSaldo />} />
+          <Route path="trazabilidad" element={<TrazabilidadCliente />} />
+          <Route path="trazabilidad10" element={<TrazabilidadCliente mode="10" />} />
         </Route>
 
         {/* Root Redirect */}
