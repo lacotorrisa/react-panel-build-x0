@@ -114,13 +114,17 @@ function mapProductInfo(title, size) {
   };
 }
 
-// Mapeo de estatus: "si dice en proceso en mongo para colivery-admin es pendiente"
+// Mapeo de estatus de MongoDB → colivery-admin
 const mapOrderStatus = (mongoStatus) => {
-  if (mongoStatus === 'delivered') return 'entregado';
-  if (mongoStatus === 'shipping') return 'en_transito';
-  // paid, processing, pending_payment -> pendiente
+  if (mongoStatus === 'delivered')        return 'entregado';
+  if (mongoStatus === 'completed')        return 'entregado';   // completed = entregado
+  if (mongoStatus === 'shipping')         return 'en_transito';
+  if (mongoStatus === 'cancelled')        return 'problema';    // cancelado = problema/retorno
+  if (mongoStatus === 'returned')         return 'problema';    // devuelto = problema/retorno
+  // paid, processing, pending_payment → pendiente
   return 'pendiente';
 };
+
 
 const mapPaymentStatus = (mongoStatus) => {
   if (mongoStatus === 'pending_payment') return 'pendiente';
@@ -292,7 +296,22 @@ async function syncOrderInternal(db, order) {
     const indexTag = isSplit ? `[Item Index: ${itemSync.itemIndex}]` : "";
     const uniqueObsKey = `[Mongo ID: ${mongoIdStr}]${isSplit ? ` [Item Index: ${itemSync.itemIndex}]` : ""}`;
 
+    // Buscar match por [Mongo ID:] (pedidos del Change Stream)
     let match = existingPedidos.find(p => p.observaciones && p.observaciones.includes(uniqueObsKey));
+
+    // Fallback: buscar por número de pedido ([Pedido: MX-XXXXX] o [mongo:MX-XXXXX])
+    // Esto cubre pedidos importados por setup_inicial.cjs que usan ese formato
+    if (!match && orderNo) {
+      match = existingPedidos.find(p =>
+        p.observaciones && (
+          p.observaciones.includes(`[Pedido: ${orderNo}]`) ||
+          p.observaciones.includes(`[mongo:${orderNo}]`)
+        )
+      );
+      if (match) {
+        console.log(`   🔗 Match por número de pedido: ${orderNo} (id: ${match.id})`);
+      }
+    }
 
     if (match) {
       if (match.tipo_compra === 'EXCLUSIVOS') {
@@ -527,9 +546,9 @@ async function start() {
     ordersStream.on('change', async (next) => {
       try {
         if (next.fullDocument) {
-          // Solo procesar si el estatus es paid, processing, pending_payment, shipping o delivered
           const status = next.fullDocument.status;
-          if (['paid', 'processing', 'pending_payment', 'shipping', 'delivered'].includes(status)) {
+          // Incluir TODOS los status relevantes, incluyendo delivered/completed
+          if (['paid', 'processing', 'pending_payment', 'shipping', 'delivered', 'completed', 'cancelled', 'returned'].includes(status)) {
             await syncOrder(db, next.fullDocument);
           }
         }
