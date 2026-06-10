@@ -104,7 +104,7 @@ export const CargarPedidos = () => {
     setTrackingLoading(true)
     toast.info('🔍 Verificando entregas en tránsito...')
     try {
-      // Traer todos los pedidos en_transito con guía asignada
+      // Traer todos los pedidos en_transito con guía
       const { data: enTransito } = await supabase
         .from('pedidos')
         .select('id, guia, paqueteria_id, nombre_comprador')
@@ -115,20 +115,11 @@ export const CargarPedidos = () => {
       const { data: paqueteriasList } = await supabase.from('paqueterias').select('id, nombre')
       const paqMap = new Map((paqueteriasList || []).map(p => [p.id, p.nombre.toLowerCase()]))
 
-      // URLs públicas de tracking por carrier
-      const getTrackingUrl = (carrier, guia) => {
-        const g = (guia || '').replace(/\s/g, '')
-        const c = (carrier || '').toLowerCase()
-        if (c.includes('dhl'))      return `https://rastreo.dhl.com.mx/${g}`
-        if (c.includes('imile'))    return `https://track.imile.com/index.html#/track?no=${g}`
-        if (c.includes('fedex'))    return `https://www.fedex.com/fedextrack/?trknbr=${g}`
-        if (c.includes('estafeta')) return `https://rastreo.estafeta.com/index.aspx?waybill=${g}`
-        if (c.includes('paquete express')) return `https://paqueteexpress.com.mx/rastreo?guia=${g}`
-        return null
-      }
-
-      let entregados = 0
-      let revisados  = 0
+      let entregados  = 0
+      let problemas   = 0
+      let retrasos    = 0
+      let revisados   = 0
+      let actualizados = false
 
       for (const pedido of (enTransito || [])) {
         const carrier = paqMap.get(pedido.paqueteria_id) || ''
@@ -137,25 +128,51 @@ export const CargarPedidos = () => {
         revisados++
 
         try {
-          // Llamar al endpoint serverless que hace el scraping
-          const res = await fetch(`/api/check-tracking?carrier=${encodeURIComponent(carrier)}&guia=${encodeURIComponent(guia)}`)
+          const res = await fetch(
+            `/api/check-tracking?carrier=${encodeURIComponent(carrier)}&guia=${encodeURIComponent(guia)}`
+          )
           if (res.ok) {
             const json = await res.json()
-            if (json.entregado) {
+            const nuevoStatus = json.status // 'entregado' | 'problema' | 'con_retraso' | 'en_transito'
+
+            if (nuevoStatus === 'entregado') {
               await supabase.from('pedidos').update({ status: 'entregado' }).eq('id', pedido.id)
+              toast.success(`✅ ENTREGADO: ${pedido.nombre_comprador} — Guía ${guia}`)
               entregados++
-              toast.success(`✅ Entregado: ${pedido.nombre_comprador} (${guia})`)
+              actualizados = true
+
+            } else if (nuevoStatus === 'problema') {
+              await supabase.from('pedidos').update({ status: 'problema' }).eq('id', pedido.id)
+              toast.warning(`❌ INCIDENCIA: ${pedido.nombre_comprador} — Guía ${guia} (${carrier.toUpperCase()})`)
+              problemas++
+              actualizados = true
+
+            } else if (nuevoStatus === 'con_retraso') {
+              await supabase.from('pedidos').update({ status: 'con_retraso' }).eq('id', pedido.id)
+              toast.warning(`⚠️ RETRASO: ${pedido.nombre_comprador} — Guía ${guia}`)
+              retrasos++
+              actualizados = true
             }
+            // si sigue en_transito → no actualizar, está correcto
           }
         } catch (_) {
-          // silenciar errores individuales
+          // silenciar errores individuales de red
         }
-        // pausa entre requests
-        await new Promise(r => setTimeout(r, 800))
+        // pausa entre requests para no saturar los servidores
+        await new Promise(r => setTimeout(r, 900))
       }
 
-      toast.success(`🎉 Barrido completo: ${entregados} entregados de ${revisados} revisados`)
-      if (entregados > 0) fetchPedidos()
+      // Resumen final
+      const partes = []
+      if (entregados)  partes.push(`✅ ${entregados} entregados`)
+      if (problemas)   partes.push(`❌ ${problemas} con incidencia`)
+      if (retrasos)    partes.push(`⚠️ ${retrasos} con retraso`)
+      const sinCambios = revisados - entregados - problemas - retrasos
+      if (sinCambios > 0) partes.push(`📦 ${sinCambios} aún en tránsito`)
+
+      toast.success(`🎉 Barrido completado — ${partes.join(' · ')} (${revisados} revisados)`)
+      if (actualizados) fetchPedidos()
+
     } catch (e) {
       toast.error('Error en verificación: ' + e.message)
     } finally {

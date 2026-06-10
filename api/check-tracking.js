@@ -1,7 +1,7 @@
 /**
  * /api/check-tracking.js — Vercel Serverless
- * Consulta el estado real de un paquete en la página del carrier
- * GET /api/check-tracking?carrier=dhl&guia=2556457584
+ * Detecta el estado real de un paquete consultando la página pública del carrier.
+ * Retorna: { status: 'entregado' | 'problema' | 'con_retraso' | 'en_transito', evento }
  */
 
 const https = require('https');
@@ -12,7 +12,7 @@ function fetchUrl(url) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/json,*/*',
-        'Accept-Language': 'es-MX,es;q=0.9',
+        'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
       },
       timeout: 10000,
     }, (res) => {
@@ -25,21 +25,53 @@ function fetchUrl(url) {
   });
 }
 
-function checkEntregado(body) {
+/**
+ * Analiza el texto del body y retorna el estado detectado.
+ */
+function detectarEstado(body) {
   const t = body.toLowerCase();
-  return (
-    t.includes('entregado') ||
-    t.includes('delivered') ||
-    t.includes('delivery successful') ||
-    t.includes('paquete entregado') ||
-    t.includes('package delivered') ||
-    t.includes('envío entregado') ||
-    t.includes('signat') // "signature obtained"
-  );
+
+  // ── ENTREGADO ──────────────────────────────────────────────────
+  const ENTREGADO = [
+    'entregado', 'delivered', 'delivery successful', 'paquete entregado',
+    'package delivered', 'envío entregado', 'signature obtained',
+    'entregado al destinatario', 'entrega exitosa', 'delivered to',
+    'successfully delivered', 'entrega realizada',
+  ];
+  if (ENTREGADO.some(k => t.includes(k))) {
+    return { status: 'entregado', evento: 'Entrega confirmada' };
+  }
+
+  // ── PROBLEMA / INCIDENCIA ──────────────────────────────────────
+  const PROBLEMA = [
+    'devuelto', 'returned', 'retorno', 'regresado',
+    'rechazado', 'rejected', 'refused',
+    'no entregado', 'not delivered', 'undeliverable',
+    'no se pudo entregar', 'failed delivery', 'delivery failed',
+    'dirección incorrecta', 'address not found', 'destinatario ausente',
+    'perdido', 'lost', 'dañado', 'damaged',
+    'cancelado', 'cancelled', 'extraviado',
+    'no hay nadie', 'nobody home', 'delivery exception',
+    'problema', 'incidencia', 'exception',
+  ];
+  if (PROBLEMA.some(k => t.includes(k))) {
+    return { status: 'problema', evento: 'Incidencia detectada en la entrega' };
+  }
+
+  // ── CON RETRASO ────────────────────────────────────────────────
+  const RETRASO = [
+    'retraso', 'delayed', 'demorado', 'demora',
+    'en espera', 'on hold', 'delay', 'retraso en tránsito',
+    'fuera de tiempo', 'tarde', 'retrasado',
+  ];
+  if (RETRASO.some(k => t.includes(k))) {
+    return { status: 'con_retraso', evento: 'Retraso detectado' };
+  }
+
+  return { status: 'en_transito', evento: null };
 }
 
 module.exports = async (req, res) => {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -49,61 +81,55 @@ module.exports = async (req, res) => {
   const g = guia.replace(/\s/g, '').trim();
 
   if (!c || !g) {
-    return res.status(400).json({ error: 'carrier y guia son requeridos', entregado: false });
+    return res.status(400).json({ error: 'carrier y guia son requeridos', status: 'en_transito' });
   }
 
   try {
-    let url = '';
-    let entregado = false;
+    let body = '';
 
-    // ── DHL México ─────────────────────────────────────────
+    // ── DHL México ─────────────────────────────────────────────
     if (c.includes('dhl')) {
-      // Intentar API JSON de DHL MX
       const r1 = await fetchUrl(`https://rastreo.dhl.com.mx/rastreomia/api/tracking/${g}`);
-      if (r1.status === 200) {
-        entregado = checkEntregado(r1.body);
-        if (!entregado) {
-          // Fallback: página HTML
-          const r2 = await fetchUrl(`https://rastreo.dhl.com.mx/${g}`);
-          entregado = checkEntregado(r2.body);
-        }
+      if (r1.status === 200 && r1.body.length > 50) {
+        body = r1.body;
       } else {
         const r2 = await fetchUrl(`https://rastreo.dhl.com.mx/${g}`);
-        entregado = checkEntregado(r2.body);
+        body = r2.body;
       }
     }
 
-    // ── iMile ──────────────────────────────────────────────
+    // ── iMile ──────────────────────────────────────────────────
     else if (c.includes('imile')) {
       const r = await fetchUrl(`https://track.imile.com/index.html#/track?no=${g}`);
-      entregado = checkEntregado(r.body);
+      body = r.body;
     }
 
-    // ── FedEx ──────────────────────────────────────────────
+    // ── FedEx ──────────────────────────────────────────────────
     else if (c.includes('fedex')) {
       const r = await fetchUrl(`https://www.fedex.com/fedextrack/?trknbr=${g}`);
-      entregado = checkEntregado(r.body);
+      body = r.body;
     }
 
-    // ── Estafeta ───────────────────────────────────────────
+    // ── Estafeta ───────────────────────────────────────────────
     else if (c.includes('estafeta')) {
       const r = await fetchUrl(`https://rastreo.estafeta.com/index.aspx?waybill=${g}`);
-      entregado = checkEntregado(r.body);
+      body = r.body;
     }
 
-    // ── Paquete Express ───────────────────────────────────
+    // ── Paquete Express ────────────────────────────────────────
     else if (c.includes('paquete express') || c.includes('paqueteexpress')) {
       const r = await fetchUrl(`https://www.paquetexpress.com.mx/rastreo?guia=${g}`);
-      entregado = checkEntregado(r.body);
+      body = r.body;
     }
 
     else {
-      return res.status(200).json({ entregado: false, nota: `Carrier no soportado: ${carrier}` });
+      return res.status(200).json({ status: 'en_transito', nota: `Carrier no soportado: ${carrier}` });
     }
 
-    return res.status(200).json({ entregado, carrier: c, guia: g });
+    const resultado = detectarEstado(body);
+    return res.status(200).json({ ...resultado, carrier: c, guia: g });
 
   } catch (err) {
-    return res.status(200).json({ entregado: false, error: err.message });
+    return res.status(200).json({ status: 'en_transito', error: err.message });
   }
 };
