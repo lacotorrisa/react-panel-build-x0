@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Upload, Plus, Zap } from 'lucide-react'
+import { Upload, Plus, Zap, Truck, RefreshCw } from 'lucide-react'
 import useAppStore from '../../store/useAppStore'
 import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
@@ -68,6 +68,7 @@ export const CargarPedidos = () => {
   const [selectedPedido, setSelectedPedido] = useState(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(BLANK)
+  const [trackingLoading, setTrackingLoading] = useState(false)
 
   // Estados de paginación, búsqueda y mes
   const [currentPage, setCurrentPage] = useState(0)
@@ -96,6 +97,71 @@ export const CargarPedidos = () => {
     activo:          esLaCotorrisa,
     clienteId:       clienteSeleccionado?.id || null,
   })
+
+  // ── VERIFICAR ENTREGAS (Tracking Bot) ─────────────────────────
+  const runTrackingCheck = async () => {
+    if (!clienteSeleccionado) return
+    setTrackingLoading(true)
+    toast.info('🔍 Verificando entregas en tránsito...')
+    try {
+      // Traer todos los pedidos en_transito con guía asignada
+      const { data: enTransito } = await supabase
+        .from('pedidos')
+        .select('id, guia, paqueteria_id, nombre_comprador')
+        .eq('cliente_id', clienteSeleccionado.id)
+        .eq('status', 'en_transito')
+        .not('guia', 'is', null)
+
+      const { data: paqueteriasList } = await supabase.from('paqueterias').select('id, nombre')
+      const paqMap = new Map((paqueteriasList || []).map(p => [p.id, p.nombre.toLowerCase()]))
+
+      // URLs públicas de tracking por carrier
+      const getTrackingUrl = (carrier, guia) => {
+        const g = (guia || '').replace(/\s/g, '')
+        const c = (carrier || '').toLowerCase()
+        if (c.includes('dhl'))      return `https://rastreo.dhl.com.mx/${g}`
+        if (c.includes('imile'))    return `https://track.imile.com/index.html#/track?no=${g}`
+        if (c.includes('fedex'))    return `https://www.fedex.com/fedextrack/?trknbr=${g}`
+        if (c.includes('estafeta')) return `https://rastreo.estafeta.com/index.aspx?waybill=${g}`
+        if (c.includes('paquete express')) return `https://paqueteexpress.com.mx/rastreo?guia=${g}`
+        return null
+      }
+
+      let entregados = 0
+      let revisados  = 0
+
+      for (const pedido of (enTransito || [])) {
+        const carrier = paqMap.get(pedido.paqueteria_id) || ''
+        const guia    = pedido.guia?.trim()
+        if (!guia || !carrier) continue
+        revisados++
+
+        try {
+          // Llamar al endpoint serverless que hace el scraping
+          const res = await fetch(`/api/check-tracking?carrier=${encodeURIComponent(carrier)}&guia=${encodeURIComponent(guia)}`)
+          if (res.ok) {
+            const json = await res.json()
+            if (json.entregado) {
+              await supabase.from('pedidos').update({ status: 'entregado' }).eq('id', pedido.id)
+              entregados++
+              toast.success(`✅ Entregado: ${pedido.nombre_comprador} (${guia})`)
+            }
+          }
+        } catch (_) {
+          // silenciar errores individuales
+        }
+        // pausa entre requests
+        await new Promise(r => setTimeout(r, 800))
+      }
+
+      toast.success(`🎉 Barrido completo: ${entregados} entregados de ${revisados} revisados`)
+      if (entregados > 0) fetchPedidos()
+    } catch (e) {
+      toast.error('Error en verificación: ' + e.message)
+    } finally {
+      setTrackingLoading(false)
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -327,7 +393,7 @@ export const CargarPedidos = () => {
           <SelectorCliente />
           <SelectorMes />
         </div>
-        <div className="flex space-x-2 self-end md:self-auto">
+        <div className="flex flex-wrap gap-2 self-end md:self-auto">
           <Button
             className="bg-orange-500 hover:bg-orange-600 text-white"
             onClick={() => { setForm(BLANK); setModalNuevoOpen(true) }}
@@ -337,6 +403,19 @@ export const CargarPedidos = () => {
           <Button variant="outline" onClick={() => setModalCsvOpen(true)}>
             <Upload className="mr-2 h-4 w-4" /> Importar CSV
           </Button>
+          {esLaCotorrisa && (
+            <Button
+              variant="outline"
+              onClick={runTrackingCheck}
+              disabled={trackingLoading}
+              className="border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+            >
+              {trackingLoading
+                ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                : <Truck className="mr-2 h-4 w-4" />}
+              {trackingLoading ? 'Verificando...' : 'Verificar Entregas'}
+            </Button>
+          )}
         </div>
       </div>
 
