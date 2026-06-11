@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
 import {
   CalendarDays, TrendingUp, Package, ShoppingBag,
-  ChevronLeft, ChevronRight, BarChart3, Wallet, ArrowUpRight, RefreshCw
+  ChevronLeft, ChevronRight, BarChart3, Wallet, ArrowUpRight, RefreshCw, Download
 } from 'lucide-react'
 
 const fmt    = v => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v || 0)
@@ -26,7 +26,6 @@ const getDomingo = (lunes) => {
 
 // ── Calcula saldo global igual que MiCartera ──────────────────────────────────
 const calcSaldoGlobal = ({ traz20, traz10, cortes, transferencias, balanceInicial }) => {
-  // Tienda General 20% (Apr1-May27)
   const gPrendas = traz20.reduce((s, r) => s + parseFloat(r.precio_tienda || 0), 0)
   const gEnvios  = traz20.reduce((s, r) => s + parseFloat(r.precio_envio  || 0), 0)
   const gNeto    = gPrendas * 0.80
@@ -35,7 +34,6 @@ const calcSaldoGlobal = ({ traz20, traz10, cortes, transferencias, balanceInicia
     .reduce((s, t) => s + (t.monto || 0), 0)
   const gSaldo   = gNeto + balanceInicial - gPagado
 
-  // Tienda General 10% (May28+)
   const g10Prendas = traz10.reduce((s, r) => s + parseFloat(r.precio_tienda || 0), 0)
   const g10Envios  = traz10.reduce((s, r) => s + parseFloat(r.precio_envio  || 0), 0)
   const g10Neto    = g10Prendas * 0.90
@@ -44,28 +42,56 @@ const calcSaldoGlobal = ({ traz20, traz10, cortes, transferencias, balanceInicia
     .reduce((s, t) => s + (t.monto || 0), 0)
   const g10Saldo   = g10Neto - g10Envios - g10Pagado
 
-  // Exclusivos
   const exclNeto   = cortes.reduce((s, c) => s + ((c.ventas_exclusivos || 0) - (c.costo_administracion || 0) - (c.pasarela_pagos || 0) - (c.costo_software || 0)), 0)
   const exclPagado = transferencias.filter(t => t.tienda === 'exclusivos').reduce((s, t) => s + (t.monto || 0), 0)
   const exclSaldo  = exclNeto - exclPagado
 
-  // Eventos
   const evNeto   = cortes.reduce((s, c) => s + ((c.ventas_eventos || 0) - (c.comision_eventos || 0)), 0)
   const evPagado = transferencias.filter(t => t.tienda === 'eventos').reduce((s, t) => s + (t.monto || 0), 0)
   const evSaldo  = evNeto - evPagado
 
   const total = gSaldo + g10Saldo + exclSaldo + evSaldo
+  return { total, gSaldo, g10Saldo, exclSaldo, evSaldo, totalPagado: transferencias.reduce((s, t) => s + (t.monto || 0), 0) }
+}
 
-  return {
-    total,
-    gSaldo, g10Saldo, exclSaldo, evSaldo,
-    // desglose de dónde viene
-    gPrendas, gEnvios, gNeto, gPagado,
-    g10Prendas, g10Envios, g10Neto, g10Pagado,
-    exclNeto, exclPagado,
-    evNeto, evPagado,
-    totalPagado: transferencias.reduce((s, t) => s + (t.monto || 0), 0),
-  }
+// ── Exportar a Excel (CSV con BOM para Excel MX) ───────────────────────────
+const exportarExcel = (rows, titulo, fechaLabel) => {
+  if (!rows || rows.length === 0) { toast.error('Sin datos para exportar'); return; }
+
+  const headers = ['Fecha','Pedido','Cliente','Teléfono','Producto','Precio Tienda','Precio Envío','Bruto','Comisión (%)','Neto','Status','Guía']
+  const csvRows = [headers.join(',')]
+
+  // Deduplicar pedidos (misma lógica que procesarDatos)
+  const baseIdVisto = new Set()
+  rows.forEach(r => {
+    const baseId = (r.numero_pedido || '').replace(/-\d+$/, '')
+    const precio_tienda = baseIdVisto.has(baseId) ? 0 : parseFloat(r.precio_tienda || 0)
+    baseIdVisto.add(baseId)
+    const precio_envio = baseIdVisto.has(baseId) ? 0 : parseFloat(r.precio_envio || 0)
+    const bruto = precio_tienda + precio_envio
+    const comPct = parseFloat(r.comision_pct || (r.fecha_compra >= '2026-05-28' ? 10 : 20))
+    const neto = precio_tienda * (1 - comPct / 100)
+
+    const esc = v => `"${String(v || '').replace(/"/g, '""')}"`
+    csvRows.push([
+      r.fecha_compra, r.numero_pedido,
+      esc(r.nombre || ''), esc(r.telefono || ''),
+      esc(r.nombre_producto || r.producto || ''),
+      precio_tienda.toFixed(2), precio_envio.toFixed(2),
+      bruto.toFixed(2), comPct, neto.toFixed(2),
+      r.status || '', esc(r.guia || '')
+    ].join(','))
+  })
+
+  const csv = '\uFEFF' + csvRows.join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `ventas-cotorrisa-${fechaLabel}-${new Date().toISOString().split('T')[0]}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+  toast.success(`Excel descargado: ${rows.length} filas`)
 }
 
 export const CierreCaja = ({ clienteIdOverride }) => {
@@ -79,56 +105,41 @@ export const CierreCaja = ({ clienteIdOverride }) => {
   const [luneSel,   setLuneSel]   = useState(getLunes(new Date()))
 
   // ── Saldo global ─────────────────────────────────────
-  const [saldoGlobal,   setSaldoGlobal]   = useState(null)
-  const [loadingSaldo,  setLoadingSaldo]  = useState(true)
-  const [showDetalle,   setShowDetalle]   = useState(false)
+  const [saldoGlobal,  setSaldoGlobal]  = useState(null)
+  const [loadingSaldo, setLoadingSaldo] = useState(true)
+  const [showDetalle,  setShowDetalle]  = useState(false)
 
-  // ── Sync Mongo ────────────────────────────────────────
-  const [syncing,     setSyncing]     = useState(false)
-  const [lastSync,    setLastSync]    = useState(() => localStorage.getItem('caja_last_sync') || null)
+  // ── Sync ─────────────────────────────────────────────
+  const [syncing,  setSyncing]  = useState(false)
+  const [lastSync, setLastSync] = useState(() => localStorage.getItem('caja_last_sync') || null)
 
-  // Fetch saldo global al montar
-  useEffect(() => {
-    const fetchSaldoGlobal = async () => {
-      setLoadingSaldo(true)
-      const [cliRes, cortesRes, transRes, traz20Res, traz10Res] = await Promise.all([
-        supabase.from('clientes').select('balance_inicial').eq('id', cid).single(),
-        supabase.from('cliente_cortes_balance').select('*').eq('cliente_id', cid),
-        supabase.from('cliente_transferencias').select('*').eq('cliente_id', cid),
-        supabase.from('trazabilidad_guias')
-          .select('precio_tienda, precio_envio')
-          .eq('cliente_id', cid)
-          .ilike('numero_pedido', 'MX-%')
-          .gte('fecha_compra', '2026-04-01')
-          .lte('fecha_compra', '2026-05-27'),
-        supabase.from('trazabilidad_guias')
-          .select('precio_tienda, precio_envio')
-          .eq('cliente_id', cid)
-          .ilike('numero_pedido', 'MX-%')
-          .gte('fecha_compra', '2026-05-28'),
-      ])
-
-      const result = calcSaldoGlobal({
-        traz20:         traz20Res.data  || [],
-        traz10:         traz10Res.data  || [],
-        cortes:         cortesRes.data  || [],
-        transferencias: transRes.data   || [],
-        balanceInicial: cliRes.data?.balance_inicial || 0,
-      })
-      setSaldoGlobal(result)
-      setLoadingSaldo(false)
-    }
-    fetchSaldoGlobal()
+  // ── Fetch saldo global ───────────────────────────────
+  const fetchSaldoGlobal = useCallback(async () => {
+    setLoadingSaldo(true)
+    const [cliRes, cortesRes, transRes, traz20Res, traz10Res] = await Promise.all([
+      supabase.from('clientes').select('balance_inicial').eq('id', cid).single(),
+      supabase.from('cliente_cortes_balance').select('*').eq('cliente_id', cid),
+      supabase.from('cliente_transferencias').select('*').eq('cliente_id', cid),
+      supabase.from('trazabilidad_guias').select('precio_tienda, precio_envio').eq('cliente_id', cid).ilike('numero_pedido', 'MX-%').gte('fecha_compra', '2026-04-01').lte('fecha_compra', '2026-05-27'),
+      supabase.from('trazabilidad_guias').select('precio_tienda, precio_envio').eq('cliente_id', cid).ilike('numero_pedido', 'MX-%').gte('fecha_compra', '2026-05-28'),
+    ])
+    setSaldoGlobal(calcSaldoGlobal({
+      traz20: traz20Res.data || [], traz10: traz10Res.data || [],
+      cortes: cortesRes.data || [], transferencias: transRes.data || [],
+      balanceInicial: cliRes.data?.balance_inicial || 0,
+    }))
+    setLoadingSaldo(false)
   }, [cid])
 
-  // ── Handler de sync Mongo → Supabase ─────────────────
+  useEffect(() => { fetchSaldoGlobal() }, [fetchSaldoGlobal])
+
+  // ── Handler de sync completo ─────────────────────────
   const handleSync = useCallback(async () => {
     setSyncing(true)
     const toastId = toast.loading('Sincronizando ventas desde Colivery...')
     try {
-      // Sincronizar últimas 48 horas para no perder nada
-      const desde = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
-      const res = await fetch(`/api/mongo-pedidos?desde=${desde}`)
+      // Sync completo (últimos 60 días)
+      const res = await fetch('/api/sync-full?full=1')
       const data = await res.json()
 
       if (!res.ok) throw new Error(data.error || 'Error en el servidor')
@@ -137,32 +148,23 @@ export const CierreCaja = ({ clienteIdOverride }) => {
       setLastSync(ahora)
       localStorage.setItem('caja_last_sync', ahora)
 
-      if (data.nuevos === 0) {
-        toast.success('Todo al día — sin órdenes nuevas', { id: toastId })
+      const { pedidos_nuevos = 0, trazabilidad_nuevas = 0, payouts_nuevos = 0 } = data.resultados || {}
+      const total = pedidos_nuevos + trazabilidad_nuevas + payouts_nuevos
+
+      if (total === 0) {
+        toast.success('✅ Todo al día — sin registros nuevos', { id: toastId })
       } else {
         toast.success(
-          `✅ ${data.importados} orden${data.importados !== 1 ? 'es' : ''} importada${data.importados !== 1 ? 's' : ''} de Colivery`,
-          { id: toastId, duration: 5000 }
+          `✅ Sync completo: ${trazabilidad_nuevas} ventas · ${payouts_nuevos} payouts importados`,
+          { id: toastId, duration: 6000 }
         )
-        // Recargar datos del día/semana y saldo
-        if (modo === 'dia') fetchDia(fechaSel)
-        else fetchSemana(luneSel)
-        // Recargar saldo global
-        setLoadingSaldo(true)
-        const [cliRes, cortesRes, transRes, traz20Res, traz10Res] = await Promise.all([
-          supabase.from('clientes').select('balance_inicial').eq('id', cid).single(),
-          supabase.from('cliente_cortes_balance').select('*').eq('cliente_id', cid),
-          supabase.from('cliente_transferencias').select('*').eq('cliente_id', cid),
-          supabase.from('trazabilidad_guias').select('precio_tienda, precio_envio').eq('cliente_id', cid).ilike('numero_pedido', 'MX-%').gte('fecha_compra', '2026-04-01').lte('fecha_compra', '2026-05-27'),
-          supabase.from('trazabilidad_guias').select('precio_tienda, precio_envio').eq('cliente_id', cid).ilike('numero_pedido', 'MX-%').gte('fecha_compra', '2026-05-28'),
-        ])
-        setSaldoGlobal(calcSaldoGlobal({
-          traz20: traz20Res.data || [], traz10: traz10Res.data || [],
-          cortes: cortesRes.data || [], transferencias: transRes.data || [],
-          balanceInicial: cliRes.data?.balance_inicial || 0,
-        }))
-        setLoadingSaldo(false)
       }
+
+      // Recargar todo
+      await fetchSaldoGlobal()
+      if (modo === 'dia') fetchDia(fechaSel)
+      else fetchSemana(luneSel)
+
     } catch (err) {
       toast.error('Error al sincronizar: ' + err.message, { id: toastId })
     } finally {
@@ -170,7 +172,7 @@ export const CierreCaja = ({ clienteIdOverride }) => {
     }
   }, [modo, fechaSel, luneSel, cid])
 
-  // ── Fetch día / semana ───────────────────────────────
+  // ── Fetch día / semana ────────────────────────────────
   const fetchDia = useCallback(async (fecha) => {
     setLoading(true)
     const { data } = await supabase
@@ -198,11 +200,11 @@ export const CierreCaja = ({ clienteIdOverride }) => {
   }, [cid])
 
   const procesarDatos = (rows, fechaIni, fechaFin) => {
-    // Deduplicar multi-guía
+    // Deduplicar multi-guía: el precio sólo cuenta una vez por pedido base
     const baseIdVisto = new Set()
     const rowsDedup = rows.map(r => {
       const baseId = (r.numero_pedido || '').replace(/-\d+$/, '')
-      if (baseIdVisto.has(baseId)) return { ...r, precio_tienda: 0 }
+      if (baseIdVisto.has(baseId)) return { ...r, precio_tienda: 0, precio_envio: 0 }
       baseIdVisto.add(baseId)
       return r
     })
@@ -215,14 +217,14 @@ export const CierreCaja = ({ clienteIdOverride }) => {
     const neto       = ventas - comision
 
     const pedidosUnicos = [...new Set(rows.map(r => (r.numero_pedido || '').replace(/-\d+$/, '')))]
-    const ordenesMX  = pedidosUnicos.filter(p => p.startsWith('MX-'))
+    const ordenesMX   = pedidosUnicos.filter(p => p.startsWith('MX-'))
     const ordenesExcl = pedidosUnicos.filter(p => !p.startsWith('MX-'))
 
     // Por día
     const porDia = {}
     rowsDedup.forEach(r => {
       const d = r.fecha_compra
-      if (!porDia[d]) porDia[d] = { ventas: 0, envios: 0, ordenes: 0 }
+      if (!porDia[d]) porDia[d] = { ventas: 0, envios: 0, ordenes: 0, neto: 0 }
       porDia[d].ventas += parseFloat(r.precio_tienda || 0)
       porDia[d].envios += parseFloat(r.precio_envio  || 0)
     })
@@ -234,13 +236,17 @@ export const CierreCaja = ({ clienteIdOverride }) => {
       pedidosPorDia[d].add(baseId)
     })
     Object.entries(pedidosPorDia).forEach(([d, s]) => {
-      if (porDia[d]) porDia[d].ordenes = s.size
+      if (porDia[d]) {
+        porDia[d].ordenes = s.size
+        const comPct = d >= '2026-05-28' ? 0.10 : 0.20
+        porDia[d].neto = porDia[d].ventas * (1 - comPct)
+      }
     })
 
     // Top productos
     const prodCount = {}
     rows.forEach(r => {
-      const nombre = r.nombre_producto || 'Producto'
+      const nombre = r.nombre_producto || r.producto || 'Producto'
       prodCount[nombre] = (prodCount[nombre] || 0) + 1
     })
     const topProductos = Object.entries(prodCount).sort((a, b) => b[1] - a[1]).slice(0, 5)
@@ -261,7 +267,9 @@ export const CierreCaja = ({ clienteIdOverride }) => {
 
   const cambiarDia    = delta => { const d = new Date(fechaSel + 'T12:00:00'); d.setDate(d.getDate() + delta); setFechaSel(toISO(d)) }
   const cambiarSemana = delta => { const d = new Date(luneSel  + 'T12:00:00'); d.setDate(d.getDate() + delta * 7); setLuneSel(toISO(d)) }
-  const tasa = datos?.pct || '20%'
+  const tasa = datos?.pct || '10%'
+
+  const fechaLabelExcel = modo === 'dia' ? fechaSel : `semana-${luneSel}`
 
   return (
     <div className="space-y-5 max-w-5xl mx-auto">
@@ -272,7 +280,7 @@ export const CierreCaja = ({ clienteIdOverride }) => {
         <div className="absolute -bottom-6 -left-6 w-28 h-28 bg-orange-500/5 rounded-full pointer-events-none" />
 
         <div className="relative z-10 p-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-start gap-4">
             {/* Saldo */}
             <div>
               <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
@@ -281,26 +289,25 @@ export const CierreCaja = ({ clienteIdOverride }) => {
               {loadingSaldo ? (
                 <div className="w-40 h-9 bg-white/10 rounded-lg animate-pulse" />
               ) : (
-                <p className={`text-4xl font-black tracking-tight ${saldoGlobal?.total >= 0 ? 'text-white' : 'text-red-400'}`}>
+                <p className={`text-4xl font-black tracking-tight ${(saldoGlobal?.total || 0) >= 0 ? 'text-white' : 'text-red-400'}`}>
                   {fmt(saldoGlobal?.total)}
                 </p>
               )}
               <p className="text-[11px] text-gray-400 mt-1">Saldo libre tras comisiones y payouts · todos los canales</p>
+              {lastSync && <p className="text-[10px] text-gray-500 mt-0.5">Última sync: {lastSync}</p>}
             </div>
 
             {/* Botones */}
-            <div className="flex flex-col sm:flex-row gap-2">
-              {/* Sync Mongo */}
+            <div className="flex flex-col sm:flex-row gap-2 mt-1">
               <button
                 onClick={handleSync}
                 disabled={syncing}
                 className="flex items-center gap-2 bg-green-500 hover:bg-green-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md whitespace-nowrap"
-                title="Importar órdenes nuevas desde Colivery a esta vista"
+                title="Importar todas las órdenes de Colivery → Supabase y actualizar saldo"
               >
                 <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Sincronizando...' : 'Sincronizar Ventas'}
+                {syncing ? 'Sincronizando...' : 'Actualizar Todo'}
               </button>
-              {/* Ver desglose */}
               <button
                 onClick={() => setShowDetalle(v => !v)}
                 className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md whitespace-nowrap"
@@ -309,12 +316,6 @@ export const CierreCaja = ({ clienteIdOverride }) => {
                 {showDetalle ? 'Ocultar detalle' : 'Ver desglose'}
               </button>
             </div>
-            {/* Última sync */}
-            {lastSync && (
-              <p className="text-[10px] text-gray-400 text-right sm:text-left mt-1 sm:mt-0">
-                Última sync: {lastSync}
-              </p>
-            )}
           </div>
 
           {/* Desglose por canal (expandible) */}
@@ -404,16 +405,21 @@ export const CierreCaja = ({ clienteIdOverride }) => {
           <CalendarDays className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="font-bold text-gray-500">Sin ventas registradas</p>
           <p className="text-xs text-gray-400 mt-1">No hay órdenes para {modo === 'dia' ? 'este día' : 'esta semana'}</p>
+          <button onClick={handleSync} disabled={syncing}
+            className="mt-4 flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl mx-auto transition-all">
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar ahora'}
+          </button>
         </div>
       ) : (
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: 'Órdenes totales',           value: datos.totalOrdenes,    icon: Package,    color: 'text-blue-600',   bg: 'bg-blue-50'   },
-              { label: 'Ventas brutas',              value: fmt(datos.totalBruto), icon: TrendingUp, color: 'text-green-600',  bg: 'bg-green-50'  },
-              { label: `Comisión Colivery (${tasa})`, value: fmt(datos.comision), icon: Wallet,     color: 'text-red-500',    bg: 'bg-red-50'    },
-              { label: 'Neto La Cotorrisa',          value: fmt(datos.neto),       icon: ShoppingBag,color: 'text-orange-600', bg: 'bg-orange-50' },
+              { label: 'Órdenes totales',             value: datos.totalOrdenes,    icon: Package,    color: 'text-blue-600',   bg: 'bg-blue-50'   },
+              { label: 'Ventas brutas',                value: fmt(datos.totalBruto), icon: TrendingUp, color: 'text-green-600',  bg: 'bg-green-50'  },
+              { label: `Comisión Colivery (${tasa})`,  value: fmt(datos.comision),   icon: Wallet,     color: 'text-red-500',    bg: 'bg-red-50'    },
+              { label: 'Neto La Cotorrisa',            value: fmt(datos.neto),       icon: ShoppingBag,color: 'text-orange-600', bg: 'bg-orange-50' },
             ].map((k, i) => (
               <div key={i} className="bg-white rounded-xl border shadow-sm p-4">
                 <div className={`w-8 h-8 rounded-lg ${k.bg} flex items-center justify-center mb-2`}>
@@ -425,15 +431,24 @@ export const CierreCaja = ({ clienteIdOverride }) => {
             ))}
           </div>
 
-          {/* Cierre de caja */}
+          {/* Cierre de caja + botón Excel */}
           <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] rounded-2xl p-6 text-white shadow-xl">
-            <p className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Cierre de Caja — {modo === 'dia' ? fmtDay(datos.fechaIni) : `Semana ${datos.fechaIni} → ${datos.fechaFin}`}
-            </p>
+            <div className="flex items-start justify-between mb-4">
+              <p className="text-xs font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                Cierre de Caja — {modo === 'dia' ? fmtDay(datos.fechaIni) : `Semana ${datos.fechaIni} → ${datos.fechaFin}`}
+              </p>
+              <button
+                onClick={() => exportarExcel(datos.rows, 'ventas', fechaLabelExcel)}
+                className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all border border-white/20"
+                title="Descargar Excel del período seleccionado"
+              >
+                <Download className="w-3.5 h-3.5" /> Descargar Excel
+              </button>
+            </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between border-b border-white/10 pb-2">
-                <span className="text-gray-400">Ventas prendas</span>
+                <span className="text-gray-400">Ventas prendas ({datos.totalOrdenes} órdenes)</span>
                 <span className="font-bold">{fmt(datos.ventas)}</span>
               </div>
               <div className="flex justify-between border-b border-white/10 pb-2">
@@ -462,8 +477,9 @@ export const CierreCaja = ({ clienteIdOverride }) => {
           {/* Desglose semanal */}
           {modo === 'semana' && datos.porDia.length > 0 && (
             <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
-              <div className="px-5 py-3 border-b bg-gray-50">
+              <div className="px-5 py-3 border-b bg-gray-50 flex justify-between items-center">
                 <h3 className="font-bold text-gray-700 text-sm">Desglose por día</h3>
+                <span className="text-xs text-gray-400">{datos.totalOrdenes} órdenes totales</span>
               </div>
               <div className="divide-y">
                 {datos.porDia.map(([fecha, d]) => (
@@ -474,14 +490,17 @@ export const CierreCaja = ({ clienteIdOverride }) => {
                     </div>
                     <div className="text-right">
                       <p className="font-black text-gray-800">{fmt(d.ventas + d.envios)}</p>
-                      <p className="text-xs text-green-600">neto: {fmt(d.ventas * (datos.fechaIni >= '2026-05-28' ? 0.90 : 0.80))}</p>
+                      <p className="text-xs text-green-600">neto: {fmt(d.neto)}</p>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="px-5 py-3 bg-orange-50 flex justify-between items-center border-t">
                 <p className="font-black text-gray-700 text-sm">Total semana</p>
-                <p className="font-black text-orange-600">{fmt(datos.totalBruto)}</p>
+                <div className="text-right">
+                  <p className="font-black text-orange-600">{fmt(datos.totalBruto)}</p>
+                  <p className="text-xs text-green-700 font-bold">neto: {fmt(datos.neto)}</p>
+                </div>
               </div>
             </div>
           )}
@@ -510,14 +529,22 @@ export const CierreCaja = ({ clienteIdOverride }) => {
           <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b bg-gray-50 flex justify-between items-center">
               <h3 className="font-bold text-gray-700 text-sm">Detalle de órdenes ({datos.totalOrdenes})</h3>
-              <span className="text-xs text-gray-400">{datos.ordenesMX.length} tienda · {datos.ordenesExcl.length} exclusivos</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400">{datos.ordenesMX.length} tienda · {datos.ordenesExcl.length} exclusivos</span>
+                <button
+                  onClick={() => exportarExcel(datos.rows, 'ventas', fechaLabelExcel)}
+                  className="flex items-center gap-1 text-[11px] bg-orange-50 text-orange-600 font-bold px-2.5 py-1 rounded-lg border border-orange-200 hover:bg-orange-100 transition-all"
+                >
+                  <Download className="w-3 h-3" /> Excel
+                </button>
+              </div>
             </div>
             <div className="divide-y max-h-80 overflow-y-auto">
               {datos.rows.map((r, i) => (
                 <div key={r.id || i} className="px-5 py-3 flex justify-between items-center hover:bg-gray-50">
                   <div>
                     <p className="font-bold text-gray-800 text-sm">{r.numero_pedido}</p>
-                    <p className="text-xs text-gray-400">{r.nombre_producto || '—'} · {r.fecha_compra}</p>
+                    <p className="text-xs text-gray-400">{r.nombre_producto || r.producto || '—'} · {r.nombre || '—'}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-black text-gray-800">{fmt(parseFloat(r.precio_tienda || 0) + parseFloat(r.precio_envio || 0))}</p>

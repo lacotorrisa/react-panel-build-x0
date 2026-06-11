@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import {
-  Wallet, ArrowUpRight, ArrowDownCircle, Paperclip, TrendingUp, AlertTriangle
+  Wallet, ArrowUpRight, ArrowDownCircle, Paperclip, TrendingUp, AlertTriangle, RefreshCw
 } from 'lucide-react'
 import { Card, CardContent } from '../../components/ui/card'
 import { Badge } from '../../components/ui/badge'
@@ -61,6 +62,7 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
   const { perfil } = useAuth()
   const navigate   = useNavigate()
   const [loading,        setLoading]        = useState(true)
+  const [syncing,        setSyncing]        = useState(false)
   const [saldoTotal,     setSaldoTotal]     = useState(0)
   const [balanceInicial, setBalanceInicial] = useState(0)
   const [cortes,         setCortes]         = useState([])
@@ -70,10 +72,36 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
   const [mongoGeneral,   setMongoGeneral]   = useState({ ventas: 0, envios: 0, total: 0, ordenes: 0 })
   const [mongoGeneral10, setMongoGeneral10] = useState({ ventas: 0, envios: 0, total: 0, ordenes: 0 })
   const [pagos10,        setPagos10]        = useState([])
+  const [lastSync,       setLastSync]       = useState(() => localStorage.getItem('cartera_last_sync') || null)
 
   const effectiveClienteId = clienteIdOverride || perfil?.cliente_id
 
   useEffect(() => { if (effectiveClienteId) fetchData() }, [effectiveClienteId, mode])
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true)
+    const toastId = toast.loading('Sincronizando ventas y saldo desde Colivery...')
+    try {
+      const res  = await fetch('/api/sync-full?full=1')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error en el servidor')
+      const ahora = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+      setLastSync(ahora)
+      localStorage.setItem('cartera_last_sync', ahora)
+      const { trazabilidad_nuevas = 0, payouts_nuevos = 0 } = data.resultados || {}
+      toast.success(
+        trazabilidad_nuevas + payouts_nuevos === 0
+          ? '✅ Saldo al día — sin cambios nuevos'
+          : `✅ Sync: ${trazabilidad_nuevas} ventas · ${payouts_nuevos} payouts actualizados`,
+        { id: toastId, duration: 5000 }
+      )
+      await fetchData()
+    } catch (err) {
+      toast.error('Error al sincronizar: ' + err.message, { id: toastId })
+    } finally {
+      setSyncing(false)
+    }
+  }, [effectiveClienteId])
 
   const fetchData = async () => {
     setLoading(true)
@@ -220,7 +248,7 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
     <div className="space-y-6 max-w-5xl mx-auto">
 
       {/* ── Header ── */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
             <Wallet className="w-6 h-6 text-orange-500" /> Mi Cartera {mode === '10' ? '(10%)' : ''}
@@ -230,13 +258,25 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
               ? 'Balance real por canal de venta · Comisión Colivery 10% (desde 28 de Mayo)'
               : 'Balance real por canal de venta · Comisión Colivery 20% (hasta 27 de Mayo)'}
           </p>
+          {lastSync && <p className="text-[10px] text-gray-400 mt-0.5">Última sync: {lastSync}</p>}
         </div>
-        <button
-          onClick={() => navigate('/cliente/retiro')}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-md"
-        >
-          <ArrowUpRight className="w-4 h-4" /> Solicitar Retiro
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md"
+            title="Importar ventas nuevas de Colivery y actualizar saldo"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Actualizando...' : 'Actualizar Saldo'}
+          </button>
+          <button
+            onClick={() => navigate('/cliente/retiro')}
+            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md"
+          >
+            <ArrowUpRight className="w-4 h-4" /> Solicitar Retiro
+          </button>
+        </div>
       </div>
 
       {/* ── Saldo Total Hero ── */}
