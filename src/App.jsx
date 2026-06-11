@@ -25,7 +25,7 @@ import { RecepcionesPaqueteria } from './pages/logistica/RecepcionesPaqueteria'
 import { InventarioPaqueteria } from './pages/logistica/InventarioPaqueteria'
 import { MisPedidosCliente } from './pages/cliente/MisPedidosCliente'
 import { InventarioCliente } from './pages/cliente/InventarioCliente'
-import { BalanceCliente } from './pages/cliente/BalanceCliente'
+
 import { MiCartera } from './pages/cliente/MiCartera'
 import { RetiroSaldo } from './pages/cliente/RetiroSaldo'
 import { TrazabilidadCliente } from './pages/cliente/TrazabilidadCliente'
@@ -53,7 +53,7 @@ const RootRedirect = () => {
 
   if (rol === 'admin') return <Navigate to="/admin/dashboard" replace />
   if (rol === 'logistica') return <Navigate to="/logistica/pedidos" replace />
-  if (rol === 'cliente') return <Navigate to="/cliente/balance" replace />
+  if (rol === 'cliente') return <Navigate to="/cliente/cartera" replace />
   
   // Usuario autenticado pero sin rol asignado o rol no reconocido
   return (
@@ -91,7 +91,7 @@ export default function App() {
           <Route path="usuarios" element={<GestionUsuarios />} />
           <Route path="inventario" element={<InventarioAdmin />} />
           <Route path="empresas-logisticas" element={<GestionEmpresasLogisticas />} />
-          <Route path="lacotorrisa/balance" element={<BalanceCliente clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" />} />
+
           <Route path="lacotorrisa/cartera" element={<MiCartera clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" />} />
           <Route path="lacotorrisa/trazabilidad" element={<TrazabilidadCliente clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" />} />
           <Route path="lacotorrisa/trazabilidad10" element={<TrazabilidadCliente clienteIdOverride="1882e9a0-4dc0-4a03-96e4-ffa5712cda09" mode="10" />} />
@@ -111,7 +111,7 @@ export default function App() {
         <Route path="/cliente" element={<ProtectedRoute allowedRoles={['cliente']}><Layout /></ProtectedRoute>}>
           <Route path="pedidos" element={<MisPedidosCliente />} />
           <Route path="inventario" element={<InventarioCliente />} />
-          <Route path="balance" element={<BalanceCliente />} />
+
           <Route path="cartera" element={<MiCartera />} />
           <Route path="cartera10" element={<MiCartera mode="10" />} />
           <Route path="retiro" element={<RetiroSaldo />} />

@@ -41,10 +41,9 @@ export const Layout = () => {
     { name: 'Clientes',       path: '/admin/clientes',    icon: Users },
     {
       name: 'La Cotorrisa',
-      path: '/admin/lacotorrisa/balance',
+      path: '/admin/lacotorrisa/cartera',
       icon: Scale,
       subLinks: [
-        { name: 'Mi Balance',              path: '/admin/lacotorrisa/balance',        icon: Scale },
         { name: 'Mi Cartera',              path: '/admin/lacotorrisa/cartera',        icon: Wallet },
         { name: 'Cobro y Cierres de Caja', path: '/admin/lacotorrisa/caja',           icon: BarChart2 },
         { name: 'Trazabilidad',            path: '/admin/lacotorrisa/trazabilidad',   icon: BarChart2 },
@@ -64,7 +63,6 @@ export const Layout = () => {
   ]
 
   const clienteLinks = [
-    { name: 'Mi Balance',      path: '/cliente/balance',    icon: Scale },
     { name: 'Mi Cartera',      path: '/cliente/cartera',    icon: Wallet },
     { name: 'Retiro de Saldo', path: '/cliente/retiro',     icon: SendHorizontal },
     { name: 'Mis Pedidos',     path: '/cliente/pedidos',    icon: Package },
