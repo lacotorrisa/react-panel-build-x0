@@ -228,8 +228,8 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
     const gPrendas = mongoGeneral.ventas
     const gEnvios  = mongoGeneral.envios
     const gNeto    = gPrendas * 0.80
-    const gPagado  = transferencias.filter(t => (t.tienda||'general') === 'general' && t.fecha <= '2026-05-27').reduce((s,t)=>s+(t.monto||0),0)
-    const gSaldo   = gNeto + balanceInicial - gPagado
+    const gPagado  = transferencias.filter(t => (t.tienda||'general') === 'general' && t.fecha > '2026-04-01' && t.fecha <= '2026-05-27').reduce((s,t)=>s+(t.monto||0),0)
+    const gSaldo   = gNeto - gEnvios + balanceInicial - gPagado
 
     // Tienda General 10%
     const g10Neto   = mongoGeneral10.ventas * 0.90
@@ -348,8 +348,10 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
           const gVentasBrutas = isGeneral ? gVentas + gEnvios : ventasAcum
           const gCom20       = isGeneral ? gVentas * 0.20 : 0
           const gNeto        = isGeneral ? gVentas * 0.80 : netoAcum
-          const gPagado      = isGeneral ? pagos.reduce((s,t) => s+(t.monto||0), 0) : pagado
-          const gSaldo       = isGeneral ? (gNeto + balanceInicial - gPagado) : saldo
+          // gPagado: solo pagos DENTRO del periodo (>Apr1, <=May27) — Mar y Apr1 ya están en balance_inicial
+          const gPagado      = isGeneral ? pagos.filter(t => t.fecha > '2026-04-01').reduce((s,t) => s+(t.monto||0), 0) : pagado
+          // gSaldo: neto 80% - envíos - pagos + balance inicial
+          const gSaldo       = isGeneral ? (gNeto - gEnvios + balanceInicial - gPagado) : saldo
 
           // --- TIENDA GENERAL 10% ---
           const g10Ventas      = mongoGeneral10.ventas
@@ -497,14 +499,14 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
 
                     {/* Balance inicial */}
                     <div className="flex justify-between items-center text-[11px] text-gray-500 pl-1">
-                      <span>+ Saldo a favor Marzo 2026</span>
+                      <span>+ Balance Inicial Abr 1, 2026</span>
                       <span className="font-medium text-green-600">+{fmt(balanceInicial)}</span>
                     </div>
 
-                    {/* Total disponible */}
+                    {/* Total disponible = neto 80% - envíos + balance inicial */}
                     <div className="flex justify-between items-center text-xs font-bold border-t pt-1">
                       <span className="text-gray-700">Total disponible</span>
-                      <span className="text-gray-800">{fmt(gNeto + balanceInicial)}</span>
+                      <span className="text-gray-800">{fmt(gNeto - gEnvios + balanceInicial)}</span>
                     </div>
 
                     {/* Saldo libre */}
