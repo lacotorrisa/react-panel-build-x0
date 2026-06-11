@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
+import { toast } from 'sonner'
 import {
   CalendarDays, TrendingUp, Package, ShoppingBag,
-  ChevronLeft, ChevronRight, BarChart3, Wallet, ArrowUpRight
+  ChevronLeft, ChevronRight, BarChart3, Wallet, ArrowUpRight, RefreshCw
 } from 'lucide-react'
 
 const fmt    = v => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v || 0)
@@ -82,6 +83,10 @@ export const CierreCaja = ({ clienteIdOverride }) => {
   const [loadingSaldo,  setLoadingSaldo]  = useState(true)
   const [showDetalle,   setShowDetalle]   = useState(false)
 
+  // ── Sync Mongo ────────────────────────────────────────
+  const [syncing,     setSyncing]     = useState(false)
+  const [lastSync,    setLastSync]    = useState(() => localStorage.getItem('caja_last_sync') || null)
+
   // Fetch saldo global al montar
   useEffect(() => {
     const fetchSaldoGlobal = async () => {
@@ -115,6 +120,55 @@ export const CierreCaja = ({ clienteIdOverride }) => {
     }
     fetchSaldoGlobal()
   }, [cid])
+
+  // ── Handler de sync Mongo → Supabase ─────────────────
+  const handleSync = useCallback(async () => {
+    setSyncing(true)
+    const toastId = toast.loading('Sincronizando ventas desde Colivery...')
+    try {
+      // Sincronizar últimas 48 horas para no perder nada
+      const desde = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+      const res = await fetch(`/api/mongo-pedidos?desde=${desde}`)
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.error || 'Error en el servidor')
+
+      const ahora = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+      setLastSync(ahora)
+      localStorage.setItem('caja_last_sync', ahora)
+
+      if (data.nuevos === 0) {
+        toast.success('Todo al día — sin órdenes nuevas', { id: toastId })
+      } else {
+        toast.success(
+          `✅ ${data.importados} orden${data.importados !== 1 ? 'es' : ''} importada${data.importados !== 1 ? 's' : ''} de Colivery`,
+          { id: toastId, duration: 5000 }
+        )
+        // Recargar datos del día/semana y saldo
+        if (modo === 'dia') fetchDia(fechaSel)
+        else fetchSemana(luneSel)
+        // Recargar saldo global
+        setLoadingSaldo(true)
+        const [cliRes, cortesRes, transRes, traz20Res, traz10Res] = await Promise.all([
+          supabase.from('clientes').select('balance_inicial').eq('id', cid).single(),
+          supabase.from('cliente_cortes_balance').select('*').eq('cliente_id', cid),
+          supabase.from('cliente_transferencias').select('*').eq('cliente_id', cid),
+          supabase.from('trazabilidad_guias').select('precio_tienda, precio_envio').eq('cliente_id', cid).ilike('numero_pedido', 'MX-%').gte('fecha_compra', '2026-04-01').lte('fecha_compra', '2026-05-27'),
+          supabase.from('trazabilidad_guias').select('precio_tienda, precio_envio').eq('cliente_id', cid).ilike('numero_pedido', 'MX-%').gte('fecha_compra', '2026-05-28'),
+        ])
+        setSaldoGlobal(calcSaldoGlobal({
+          traz20: traz20Res.data || [], traz10: traz10Res.data || [],
+          cortes: cortesRes.data || [], transferencias: transRes.data || [],
+          balanceInicial: cliRes.data?.balance_inicial || 0,
+        }))
+        setLoadingSaldo(false)
+      }
+    } catch (err) {
+      toast.error('Error al sincronizar: ' + err.message, { id: toastId })
+    } finally {
+      setSyncing(false)
+    }
+  }, [modo, fechaSel, luneSel, cid])
 
   // ── Fetch día / semana ───────────────────────────────
   const fetchDia = useCallback(async (fecha) => {
@@ -234,14 +288,33 @@ export const CierreCaja = ({ clienteIdOverride }) => {
               <p className="text-[11px] text-gray-400 mt-1">Saldo libre tras comisiones y payouts · todos los canales</p>
             </div>
 
-            {/* Botón detalle */}
-            <button
-              onClick={() => setShowDetalle(v => !v)}
-              className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md whitespace-nowrap"
-            >
-              <ArrowUpRight className="w-4 h-4" />
-              {showDetalle ? 'Ocultar detalle' : 'Ver desglose'}
-            </button>
+            {/* Botones */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              {/* Sync Mongo */}
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="flex items-center gap-2 bg-green-500 hover:bg-green-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md whitespace-nowrap"
+                title="Importar órdenes nuevas desde Colivery a esta vista"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Sincronizando...' : 'Sincronizar Ventas'}
+              </button>
+              {/* Ver desglose */}
+              <button
+                onClick={() => setShowDetalle(v => !v)}
+                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md whitespace-nowrap"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                {showDetalle ? 'Ocultar detalle' : 'Ver desglose'}
+              </button>
+            </div>
+            {/* Última sync */}
+            {lastSync && (
+              <p className="text-[10px] text-gray-400 text-right sm:text-left mt-1 sm:mt-0">
+                Última sync: {lastSync}
+              </p>
+            )}
           </div>
 
           {/* Desglose por canal (expandible) */}
