@@ -126,9 +126,13 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
       const ultFin20 = corte20?.fecha_fin || '2026-05-27'
       const ultFin10 = corte10?.fecha_fin || '2026-05-27'
 
-      // ── Trazabilidad ABIERTA: solo días DESPUÉS del último corte ───────────
-      const [trazOpen20Res, trazOpen10Res] = await Promise.all([
-        // Días abiertos del canal 20% (si el corte no llega a hoy)
+      // ── Trazabilidad: envíos del periodo completo + días abiertos ─────────
+      const [trazEnvios20Res, trazOpen20Res, trazOpen10Res] = await Promise.all([
+        // Envíos del periodo completo 20% (Apr1-May27) siempre desde trazabilidad
+        supabase.from('trazabilidad_guias').select('precio_envio')
+          .eq('cliente_id', effectiveClienteId).ilike('numero_pedido', 'MX-%')
+          .gte('fecha_compra', '2026-04-01').lte('fecha_compra', '2026-05-27'),
+        // Prendas de días abiertos del canal 20% (si el corte no cubre todo)
         ultFin20 < '2026-05-27'
           ? supabase.from('trazabilidad_guias').select('precio_tienda, precio_envio')
               .eq('cliente_id', effectiveClienteId).ilike('numero_pedido', 'MX-%')
@@ -140,24 +144,25 @@ export const MiCartera = ({ clienteIdOverride, mode = '20' }) => {
           .gt('fecha_compra', ultFin10),
       ])
 
-      // ── Canal General 20% = corte oficial + días abiertos ─────────────────
-      const trazOpen20 = trazOpen20Res.data || []
+      // ── Canal General 20% = corte oficial (prendas) + trazabilidad (envíos) ─
+      const trazEnvios20  = trazEnvios20Res.data || []
+      const trazOpen20    = trazOpen20Res.data || []
       const cortePrendas20 = corte20?.ventas_general || 0
-      const corteEnvios20  = 0 // los envíos están en gastos_adicionales del corte o en trazabilidad
+      // Envíos SIEMPRE desde trazabilidad (el corte no los guarda)
+      const total20Envios  = trazEnvios20.reduce((s, r) => s + parseFloat(r.precio_envio || 0), 0)
+      // Prendas: corte oficial + días abiertos que el corte no cubre
       const openPrendas20  = trazOpen20.reduce((s, r) => s + parseFloat(r.precio_tienda || 0), 0)
-      const openEnvios20   = trazOpen20.reduce((s, r) => s + parseFloat(r.precio_envio  || 0), 0)
       const total20Prendas = cortePrendas20 + openPrendas20
-      const total20Envios  = corteEnvios20  + openEnvios20
       setMongoGeneral({ ventas: total20Prendas, envios: total20Envios, total: total20Prendas + total20Envios, ordenes: 0 })
 
       // ── Canal General 10% = corte oficial + días abiertos ─────────────────
       const trazOpen10 = trazOpen10Res.data || []
       const cortePrendas10 = corte10?.ventas_general || 0
-      const corteEnvios10  = 0
       const openPrendas10  = trazOpen10.reduce((s, r) => s + parseFloat(r.precio_tienda || 0), 0)
       const openEnvios10   = trazOpen10.reduce((s, r) => s + parseFloat(r.precio_envio  || 0), 0)
+      // Envíos 10%: solo días abiertos (el corte cubre May28-Jun8, trazabilidad cubre Jun9+)
       const total10Prendas = cortePrendas10 + openPrendas10
-      const total10Envios  = corteEnvios10  + openEnvios10
+      const total10Envios  = openEnvios10
       setMongoGeneral10({ ventas: total10Prendas, envios: total10Envios, total: total10Prendas + total10Envios, ordenes: trazOpen10.length })
 
       // ── Pagos del canal general desde May 28 ──────────────────────────────
