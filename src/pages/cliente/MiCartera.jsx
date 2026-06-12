@@ -267,6 +267,103 @@ const Row = ({ label, val, bold, red, green, indent }) => (
 )
 
 // ══════════════════════════════════════════════════════════════════════════════
+// COMPONENTE: Tarjeta mes HISTÓRICO (Dic-Mar, sin datos de ventas en MongoDB)
+// ══════════════════════════════════════════════════════════════════════════════
+const MesHistoricoCard = ({ mesKey, label, payouts, isMarzo, balanceInicial, isLastHistorico }) => {
+  const [open, setOpen] = useState(false)
+  const payoutTotal = payouts.reduce((s, p) => s + (p.monto || 0), 0)
+
+  return (
+    <div className="relative">
+      {/* Conector */}
+      <div
+        className="absolute left-[22px] top-full z-10 w-0.5"
+        style={{ height: 28, background: 'linear-gradient(to bottom, #d1d5db, #f3f4f6)' }}
+      />
+      <div className="rounded-2xl border shadow-sm overflow-hidden">
+        {/* Header */}
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left bg-gradient-to-r from-gray-800 to-gray-700 text-white hover:from-gray-700 hover:to-gray-600 transition-colors"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex-shrink-0 w-3 h-3 rounded-full bg-gray-400" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-sm text-white">{label}</span>
+                <span className="text-[10px] font-bold text-gray-400 bg-gray-700 rounded-full px-2 py-0.5">HISTÓRICO</span>
+              </div>
+              {payoutTotal > 0 && (
+                <span className="text-[10px] text-red-300">
+                  Retiro: {fmt(payoutTotal)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {isMarzo && (
+              <div className="text-right">
+                <p className="text-[10px] text-gray-400">Saldo al cierre</p>
+                <p className="text-lg font-black text-green-400">{fmt(balanceInicial)}</p>
+              </div>
+            )}
+            {open
+              ? <ChevronUp  className="w-4 h-4 text-gray-400" />
+              : <ChevronDown className="w-4 h-4 text-gray-400" />}
+          </div>
+        </button>
+
+        {/* Cuerpo */}
+        {open && (
+          <div className="bg-white border-t px-5 py-4 space-y-3 text-xs">
+            {/* Aviso sin datos de ventas */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 leading-relaxed">
+              📋 Las ventas de este mes se procesaron en el <strong>sistema anterior</strong>.
+              Solo se muestran los retiros registrados.
+            </div>
+
+            {/* Payouts del mes */}
+            <div className={`rounded-xl border p-3 space-y-1.5
+              ${payoutTotal > 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">💸 Retiros del mes</p>
+              {payouts.length === 0
+                ? <p className="text-gray-400">Sin retiros registrados</p>
+                : <>
+                    {payouts.map((p, i) => (
+                      <div key={i} className="flex justify-between items-center py-1 border-b border-red-100/60">
+                        <div className="text-gray-600">
+                          <span className="font-semibold">{p.fecha}</span>
+                          {p.hora && <span className="text-gray-400"> · {p.hora}</span>}
+                        </div>
+                        <span className="font-black text-red-600">−{fmt(p.monto)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between font-black text-xs text-red-700 pt-1">
+                      <span>Total retirado</span>
+                      <span>−{fmt(payoutTotal)}</span>
+                    </div>
+                  </>
+              }
+            </div>
+
+            {/* Saldo certificado solo en Marzo */}
+            {isMarzo && (
+              <div className="flex justify-between items-center font-black text-sm rounded-xl px-4 py-3 bg-green-50 text-green-700">
+                <div>
+                  <p className="text-xs font-black">Saldo certificado al 1 Abr 2026</p>
+                  <p className="text-[10px] font-normal text-green-600">Validado por reporte oficial Colivery</p>
+                </div>
+                <span className="text-base">{fmt(balanceInicial)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE: Canal separado (Exclusivos / Eventos)
 // ══════════════════════════════════════════════════════════════════════════════
 const CanalCard = ({ canal, cortes, transferencias }) => {
@@ -628,21 +725,25 @@ export const MiCartera = ({ clienteIdOverride }) => {
         </h3>
 
         <div className="space-y-7">
-          {/* Bloque histórico Dic-Mar */}
-          <MesCard
-            datos={{
-              label: 'Dic 2025 – Mar 2026',
-              balanceInicial,
-              ordenes: 0, prendas: 0, envios: 0, bruto: 0,
-              comision: 0, neto: balanceInicial, comPct: 0,
-              cerrado: true, subPeriodos: null,
-              payouts: payoutsPrePeriodo,
-              payoutTotal: 0,  // NO restar — ya están en balanceInicial
-            }}
-            saldoAnterior={0}
-            isFirst
-            isLast={false}
-          />
+          {/* Meses históricos Dic-Mar — uno por mes */}
+          {['2025-12','2026-01','2026-02','2026-03'].map((mes, i) => {
+            const [yy, mm] = mes.split('-')
+            const pagosDelMes = payoutsPrePeriodo.filter(p =>
+              p.fecha?.startsWith(mes)
+            )
+            const isMarzo = mes === '2026-03'
+            return (
+              <MesHistoricoCard
+                key={mes}
+                mesKey={mes}
+                label={nomMes(yy, mm)}
+                payouts={pagosDelMes}
+                isMarzo={isMarzo}
+                balanceInicial={balanceInicial}
+                isLastHistorico={isMarzo}
+              />
+            )
+          })}
 
           {/* Meses reales (Abr, May, Jun…) */}
           {meses.map((m, i) => {
