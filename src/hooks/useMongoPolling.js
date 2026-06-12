@@ -1,9 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '../lib/supabase'
 
-const POLLING_INTERVAL_MS = 20_000   // 20 segundos (más frecuente)
-const LS_KEY = 'colivery_mongo_last_check'
+const POLLING_INTERVAL_MS = 20_000   // 20 segundos
+const LS_KEY  = 'colivery_mongo_last_check'
+const LS_TIME = 'colivery_mongo_last_sync_time'
 
 const CLIENTE_COTORRISA_ID = '1882e9a0-4dc0-4a03-96e4-ffa5712cda09'
 
@@ -29,29 +30,40 @@ export function useMongoPolling({
   const timerRef      = useRef(null)
   const isRunningRef  = useRef(false)
   const channelRef    = useRef(null)
+  const [syncing,   setSyncing]   = useState(false)
+  const [lastSyncAt, setLastSyncAt] = useState(() => localStorage.getItem(LS_TIME) || null)
 
   // ── 1. POLLING / SINCRONIZACIÓN ────────────────────────────
-  const poll = useCallback(async () => {
+  const poll = useCallback(async (manual = false) => {
     if (isRunningRef.current) return
     isRunningRef.current = true
+    setSyncing(true)
+    const toastId = manual ? toast.loading('🔄 Sincronizando con MongoDB...') : null
 
     try {
       const lastCheck = localStorage.getItem(LS_KEY)
       const params    = lastCheck ? `?desde=${encodeURIComponent(lastCheck)}` : ''
 
       const res = await fetch(`/api/mongo-pedidos${params}`, {
-        method: 'GET',
+        method:  'GET',
         headers: { 'Content-Type': 'application/json' },
+        signal:  AbortSignal.timeout(15000),  // 15s timeout
       })
 
-      // Verificar que la respuesta sea JSON (la ruta /api/ solo existe en Vercel)
       const contentType = res.headers.get('content-type') || ''
       const isJson = contentType.includes('application/json')
 
-      if (res.ok && isJson) {
-        // ── Producción (Vercel) ──────────────────────────────
+      if (!res.ok) {
+        const errBody = isJson ? (await res.json()) : { error: `HTTP ${res.status}` }
+        throw new Error(errBody.error || errBody.message || `Error HTTP ${res.status}`)
+      }
+
+      if (isJson) {
         const data = await res.json()
-        localStorage.setItem(LS_KEY, new Date().toISOString())
+        const ahora = new Date().toISOString()
+        localStorage.setItem(LS_KEY, ahora)
+        localStorage.setItem(LS_TIME, ahora)
+        setLastSyncAt(ahora)
 
         if (data.importados > 0 && data.pedidos?.length > 0) {
           if (data.importados === 1) {
@@ -60,13 +72,15 @@ export function useMongoPolling({
             const producto = p.productos?.[0]?.nombre || 'Producto'
             const precio   = p.productos?.[0]?.precio
             const precioStr = precio ? ` — $${precio.toLocaleString('es-MX')} MXN` : ''
-            toast.success(`🛍️ ¡Nueva venta La Cotorrisa!`, {
+            toast.success(`🛍️ ¡Nueva venta!`, {
+              id: toastId,
               description: `${nombre} · ${producto}${precioStr}`,
               duration: 10000,
             })
           } else {
-            toast.success(`🛍️ ${data.importados} nuevas ventas de La Cotorrisa`, {
-              description: 'Se reflejaron automáticamente en la tabla',
+            toast.success(`🛍️ ${data.importados} nuevas ventas importadas`, {
+              id: toastId,
+              description: 'La tabla se actualizó automáticamente',
               duration: 8000,
             })
           }
@@ -78,18 +92,26 @@ export function useMongoPolling({
               icon: '/favicon.ico',
             })
           }
+        } else if (manual) {
+          toast.success('✅ Al día — sin pedidos nuevos', { id: toastId, duration: 3000 })
+        } else if (toastId) {
+          toast.dismiss(toastId)
         }
       }
 
-      // Siempre refrescar la tabla desde Supabase (en local y producción)
       if (onNuevosPedidos) onNuevosPedidos()
 
     } catch (err) {
-      // Error de red — aún así refrescar datos locales
+      console.warn('[useMongoPolling] Error:', err.message)
+      if (manual) {
+        toast.error(`Error al sincronizar: ${err.message}`, { id: toastId, duration: 6000 })
+      } else if (toastId) {
+        toast.dismiss(toastId)
+      }
       if (onNuevosPedidos) onNuevosPedidos()
-      console.warn('[useMongoPolling] API no disponible, refrescando desde Supabase:', err.message)
     } finally {
       isRunningRef.current = false
+      setSyncing(false)
     }
   }, [onNuevosPedidos])
 
@@ -100,11 +122,11 @@ export function useMongoPolling({
     }
   }, [])
 
-  // Ciclo de polling
+  // Ciclo de polling automático cada 20s
   useEffect(() => {
     if (!activo) return
-    poll()
-    timerRef.current = setInterval(poll, POLLING_INTERVAL_MS)
+    poll(false)  // primer poll silencioso
+    timerRef.current = setInterval(() => poll(false), POLLING_INTERVAL_MS)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [activo, poll])
 
@@ -190,7 +212,12 @@ export function useMongoPolling({
     }
   }, [clienteId, onNuevosPedidos, onActualizado])
 
-  const checkAhora = useCallback(() => { poll() }, [poll])
+  // Manual: resetea el timer para que la próxima auto-sync sea en 20s desde ahora
+  const checkAhora = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    poll(true)  // poll manual con feedback de toast
+    timerRef.current = setInterval(() => poll(false), POLLING_INTERVAL_MS)
+  }, [poll])
 
-  return { checkAhora }
+  return { checkAhora, syncing, lastSyncAt }
 }

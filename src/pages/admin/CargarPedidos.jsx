@@ -91,7 +91,7 @@ export const CargarPedidos = () => {
   }, [clienteSeleccionado, currentPage, selectedMonth, debouncedSearch])
 
   const esLaCotorrisa = clienteSeleccionado?.nombre?.toLowerCase().includes('cotorrisa')
-  const { checkAhora } = useMongoPolling({
+  const { checkAhora, syncing: mongoSyncing, lastSyncAt } = useMongoPolling({
     onNuevosPedidos: handleNuevosPedidosMongo,
     onActualizado:   handleActualizado,
     activo:          esLaCotorrisa,
@@ -360,47 +360,86 @@ export const CargarPedidos = () => {
           gap: 10,
           padding: '8px 14px',
           borderRadius: 10,
-          background: 'linear-gradient(135deg, rgba(34,197,94,0.08), rgba(16,185,129,0.06))',
-          border: '1px solid rgba(34,197,94,0.25)',
+          background: mongoSyncing
+            ? 'linear-gradient(135deg, rgba(249,115,22,0.08), rgba(234,88,12,0.06))'
+            : 'linear-gradient(135deg, rgba(34,197,94,0.08), rgba(16,185,129,0.06))',
+          border: mongoSyncing
+            ? '1px solid rgba(249,115,22,0.3)'
+            : '1px solid rgba(34,197,94,0.25)',
           fontSize: 13,
-          color: '#15803d',
+          color: mongoSyncing ? '#c2410c' : '#15803d',
           fontWeight: 500,
+          transition: 'all 0.3s ease',
         }}>
-          <span style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: '#22c55e',
-            boxShadow: '0 0 0 3px rgba(34,197,94,0.2)',
-            animation: 'mongo-pulse 2s ease infinite',
-          }} />
+          {/* Indicador de estado */}
+          {mongoSyncing ? (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 8, height: 8, borderRadius: '50%',
+              background: '#f97316', animation: 'mongo-pulse 0.8s ease infinite',
+            }} />
+          ) : (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 8, height: 8, borderRadius: '50%',
+              background: '#22c55e', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)',
+              animation: 'mongo-pulse 2s ease infinite',
+            }} />
+          )}
           <style>{`
             @keyframes mongo-pulse {
               0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
               50% { box-shadow: 0 0 0 6px rgba(34,197,94,0.05); }
             }
           `}</style>
-          <Zap size={14} style={{ color: '#16a34a' }} />
-          <span>Sincronización en tiempo real activa — los pedidos de La Cotorrisa desde MongoDB se importan automáticamente</span>
+          <Zap size={14} style={{ color: mongoSyncing ? '#ea580c' : '#16a34a', flexShrink: 0 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+            <span style={{ fontWeight: 600 }}>
+              {mongoSyncing
+                ? '🔄 Sincronizando con MongoDB...'
+                : '✅ Sincronización automática activa — pedidos de Mongo se importan en tiempo real'
+              }
+            </span>
+            {lastSyncAt && !mongoSyncing && (
+              <span style={{ fontSize: 11, opacity: 0.7 }}>
+                Último sync: {new Date(lastSyncAt).toLocaleTimeString('es-MX', {
+                  timeZone: 'America/Mexico_City',
+                  hour: '2-digit', minute: '2-digit', second: '2-digit'
+                })} hrs
+              </span>
+            )}
+          </div>
           <button
             onClick={checkAhora}
+            disabled={mongoSyncing}
             style={{
               marginLeft: 'auto',
-              background: 'rgba(34,197,94,0.12)',
-              border: '1px solid rgba(34,197,94,0.3)',
+              background: mongoSyncing ? 'rgba(249,115,22,0.15)' : 'rgba(34,197,94,0.12)',
+              border: mongoSyncing ? '1px solid rgba(249,115,22,0.4)' : '1px solid rgba(34,197,94,0.3)',
               borderRadius: 6,
-              padding: '3px 10px',
+              padding: '4px 12px',
               fontSize: 12,
-              color: '#15803d',
-              cursor: 'pointer',
-              fontWeight: 600,
+              color: mongoSyncing ? '#c2410c' : '#15803d',
+              cursor: mongoSyncing ? 'not-allowed' : 'pointer',
+              fontWeight: 700,
+              flexShrink: 0,
+              opacity: mongoSyncing ? 0.7 : 1,
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
             }}
           >
-            ↻ Sincronizar ahora
+            {mongoSyncing ? (
+              <>
+                <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                Sincronizando...
+              </>
+            ) : (
+              '↻ Sincronizar ahora'
+            )}
           </button>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
 
